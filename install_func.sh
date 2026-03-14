@@ -136,6 +136,7 @@ io.github.huskydg.magisk
 me.weishu.kernelsu
 com.rifsxd.ksunext
 com.sukisu.ultra
+com.resukisu.resukisu
 me.bmax.apatch
 me.garfieldhan.apatch.next
 com.android.patch

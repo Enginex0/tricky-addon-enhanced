@@ -29,6 +29,10 @@
                     "package-name": "com.sukisu.ultra"
                 },
                 {
+                    "name": "ReSukiSU",
+                    "package-name": "com.resukisu.resukisu"
+                },
+                {
                     "name": "Apatch",
                     "package-name": "me.bmax.apatch"
                 },
