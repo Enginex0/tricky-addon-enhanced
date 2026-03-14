@@ -2,7 +2,6 @@
 # Any property whose name contains these substrings gets binary-patched
 # Source: sensitive-props-crontabs propscleaner.sh (silvzr/sensitive-props-crontabs)
 LSPosed
-marketname
 custom.device
 modversion
 lineage
