@@ -17,7 +17,10 @@ const MIGRATION_MAP: &[(&str, &str)] = &[
 
 pub fn migrate_ini_to_toml(ini_path: &Path, toml_path: &Path) -> anyhow::Result<()> {
     if toml_path.exists() {
-        tracing::info!("TOML config already exists at {}, skipping migration", toml_path.display());
+        tracing::info!(
+            "TOML config already exists at {}, skipping migration",
+            toml_path.display()
+        );
         return Ok(());
     }
 
@@ -41,7 +44,10 @@ pub fn migrate_ini_to_toml(ini_path: &Path, toml_path: &Path) -> anyhow::Result<
 
         for key in ini_map.keys() {
             if !MIGRATION_MAP.iter().any(|(k, _)| k == key) {
-                tracing::warn!("unmapped legacy config key: {} (preserved in .conf.bak)", key);
+                tracing::warn!(
+                    "unmapped legacy config key: {} (preserved in .conf.bak)",
+                    key
+                );
             }
         }
     }

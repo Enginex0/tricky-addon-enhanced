@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod core;
+pub mod engine;
 pub mod platform;
 pub mod logging;
 pub mod config;

@@ -226,6 +226,7 @@ rm -f "$ZIP_PATH"
 cd "$REPO_DIR"
 zip -r9 "$ZIP_PATH" . \
     -x ".git/*" \
+    -x ".amp/*" \
     -x ".claude/*" \
     -x ".mcp-vector-search/*" \
     -x ".mcp.json" \

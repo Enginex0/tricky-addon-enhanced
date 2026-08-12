@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- Added TEESimulator v4 support for profile apps, keyboxes, and patch levels without replacing its WebUI. Multi-profile setups can select the managed profile in this addon's WebUI.
+
 ## v5.53.1 (2026-05-01)
 
 ### Bug Fixes

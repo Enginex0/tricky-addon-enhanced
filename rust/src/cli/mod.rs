@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 
+pub mod applist;
 pub mod handlers;
 pub mod webui_init;
-pub mod applist;
 
 #[derive(Parser)]
 #[command(name = "ta-enhanced", version = env!("CARGO_PKG_VERSION"))]
@@ -72,8 +72,13 @@ pub enum Commands {
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
-    Get { key: String },
-    Set { key: String, value: String },
+    Get {
+        key: String,
+    },
+    Set {
+        key: String,
+        value: String,
+    },
     Migrate,
     List,
     Init {
@@ -93,9 +98,13 @@ pub enum ConfigAction {
 #[derive(Subcommand)]
 pub enum KeyboxAction {
     Fetch,
-    Validate { path: Option<String> },
+    Validate {
+        path: Option<String>,
+    },
     #[command(name = "set-custom")]
-    SetCustom { path: String },
+    SetCustom {
+        path: String,
+    },
     Sources,
     Generate,
     Backup,
@@ -115,6 +124,10 @@ pub enum SecurityPatchAction {
         boot: String,
         vendor: String,
     },
+    #[command(name = "import-legacy")]
+    ImportLegacy,
+    #[command(name = "export-legacy")]
+    ExportLegacy,
 }
 
 #[derive(Subcommand)]
@@ -150,8 +163,19 @@ pub enum StatusAction {
 #[derive(Subcommand)]
 pub enum AutomationAction {
     Status,
+    Profiles,
+    #[command(name = "select-profile")]
+    SelectProfile {
+        name: String,
+    },
     Check,
     Cleanup,
+    #[command(name = "sync-target")]
+    SyncTarget,
+    #[command(name = "export-target")]
+    ExportTarget,
+    #[command(name = "profile-ready")]
+    ProfileReady,
 }
 
 #[derive(Subcommand)]
@@ -175,7 +199,9 @@ pub enum ModuleAction {
     Uninstall,
     #[command(name = "update-locales")]
     UpdateLocales,
-    Download { url: String },
+    Download {
+        url: String,
+    },
 }
 
 pub fn dispatch(command: Commands, cfg: &crate::config::Config) -> anyhow::Result<()> {

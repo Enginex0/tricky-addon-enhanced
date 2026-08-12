@@ -2,6 +2,7 @@ SKIPUNZIP=0
 DEBUG=false
 COMPATH="$MODPATH/common"
 TS="/data/adb/modules/tricky_store"
+. "$MODPATH/common/detect_engine.sh"
 SCRIPT_DIR="/data/adb/tricky_store"
 CONFIG_DIR="$SCRIPT_DIR/target_list_config"
 MODID=$(grep_prop id "$TMPDIR/module.prop")
@@ -38,7 +39,10 @@ else
     abort " "
 fi
 
-if [ -d "$TS" ]; then
+if [ "$ENGINE" = "teesim" ]; then
+    engine_name=$(grep_prop name "$ENGINE_MODULE/module.prop")
+    ui_print "  🔒 ${engine_name:-TEESimulator v4} detected"
+elif [ -d "$TS" ]; then
     engine_name=""
     if [ -f "$TS/daemon" ]; then
         engine_name=$(grep -o '\-\-nice-name=[^ ]*' "$TS/daemon" 2>/dev/null | cut -d= -f2)
@@ -57,6 +61,7 @@ case "$ABI" in
     *) abort "  ❌ Unsupported ABI: $ABI" ;;
 esac
 BIN="$MODPATH/bin/$ABI/ta-enhanced"
+initialize
 
 # Aggressive conflict purge. Hot-install means we cannot wait for the
 # manager to process disable+remove on next boot, so rm -rf conflicting
@@ -97,6 +102,22 @@ done
 [ "$PURGED_COUNT" -eq 0 ] && ui_print "  ✅ $(_msg no_conflicts)"
 
 HAS_TARGET=0
+TEESIM_READY=1
+if [ "$ENGINE" = "teesim" ]; then
+    if "$BIN" automation profile-ready >/dev/null 2>&1; then
+        "$BIN" automation export-target >/dev/null 2>&1 \
+            || abort "  ❌ Failed to read TEESimulator config.json"
+    elif PROFILE_ERROR=$("$BIN" automation profiles 2>&1); then
+        TEESIM_READY=0
+        ui_print "  ⚠️  Select a TEESimulator profile in this addon's WebUI"
+        ui_print "  ℹ️  TEESimulator will remain unchanged until then"
+    elif [ -f /data/adb/teesim/config.json ]; then
+        abort "  ❌ Invalid TEESimulator config: $PROFILE_ERROR"
+    else
+        TEESIM_READY=0
+        ui_print "  ⚠️  TEESimulator config is not available yet"
+    fi
+fi
 if [ -f "/data/adb/tricky_store/target.txt" ] && [ -s "/data/adb/tricky_store/target.txt" ]; then
     HAS_TARGET=1
 fi
@@ -131,7 +152,6 @@ fi
 ui_print " "
 ui_print "  📦 $(_msg installing)"
 
-initialize
 populate_system_app
 
 if [ -x "$BIN" ]; then
@@ -167,6 +187,11 @@ elif [ "$HAS_TARGET" -eq 1 ]; then
     pm list packages -3 2>/dev/null | sed 's/^package://' | sort > "$AUTOMATION_DIR/known_packages.txt"
 else
     generate_minimal_target
+fi
+
+if [ "$ENGINE" = "teesim" ] && [ "$TEESIM_READY" = "1" ]; then
+    "$BIN" automation sync-target >/dev/null 2>&1 \
+        || abort "  ❌ Failed to update TEESimulator config.json"
 fi
 
 TA_DIR="$SCRIPT_DIR/ta-enhanced"
@@ -213,14 +238,22 @@ if [ -f "$SCRIPT_DIR/enhanced.conf" ]; then
         || ui_print "  ⚠️  Legacy config migration failed"
 fi
 
-ui_print "  🛡️  Setting security patch dates..."
-if "$BIN" security-patch update --force 2>/dev/null; then
-    ui_print "  ✅ $(_msg sec_patch_ok)"
+if [ "$ENGINE" = "teesim" ] && [ "$TEESIM_READY" = "0" ]; then
+    ui_print "  ⚠️  TEESimulator updates paused: no profile selected"
+    ui_print "  ℹ️  CLI: ta-enhanced automation select-profile PROFILE_NAME"
 else
-    ui_print "  ⚠️  $(_msg sec_patch_fail)"
+    ui_print "  🛡️  Setting security patch dates..."
+    if "$BIN" security-patch update --force 2>/dev/null; then
+        ui_print "  ✅ $(_msg sec_patch_ok)"
+    else
+        ui_print "  ⚠️  $(_msg sec_patch_fail)"
+    fi
 fi
 
-if [ -f "$SCRIPT_DIR/keybox.xml" ]; then
+if [ "$ENGINE" = "teesim" ] && [ "$TEESIM_READY" = "0" ]; then
+    : # Do not read or replace a keybox until the user selects its owning profile.
+elif { [ "$ENGINE" = "tricky_store" ] && [ -f "$SCRIPT_DIR/keybox.xml" ]; } \
+    || { [ "$ENGINE" = "teesim" ] && "$BIN" keybox validate >/dev/null 2>&1; }; then
     ui_print "  🔑 $(_msg keybox_kept)"
 elif timeout 3 ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; then
     ui_print "  🔑 $(_msg keybox_fetch)"

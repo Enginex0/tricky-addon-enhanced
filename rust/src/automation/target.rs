@@ -1,42 +1,40 @@
-use std::path::Path;
 use crate::platform::fs::atomic_write;
+use std::path::Path;
 
-const TARGET_FILE: &str = "/data/adb/tricky_store/target.txt";
 pub(crate) const AUTO_ADDED: &str = "/data/adb/tricky_store/.automation/auto_added.txt";
+const TARGET_FILE: &str = "/data/adb/tricky_store/target.txt";
 
 pub fn read_target() -> anyhow::Result<Vec<String>> {
-    let path = Path::new(TARGET_FILE);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let content = std::fs::read_to_string(path)?;
-    Ok(content
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| strip_suffix(l).to_string())
+    Ok(crate::engine::read_targets()?
+        .into_iter()
+        .map(|line| strip_suffix(&line).to_owned())
         .collect())
 }
 
 pub fn read_target_raw() -> anyhow::Result<Vec<String>> {
-    let path = Path::new(TARGET_FILE);
-    if !path.exists() {
-        return Ok(Vec::new());
+    if crate::engine::Engine::detect() == crate::engine::Engine::TrickyStore {
+        let path = Path::new(TARGET_FILE);
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        return Ok(std::fs::read_to_string(path)?
+            .lines()
+            .map(|line| line.trim().to_owned())
+            .filter(|line| !line.is_empty())
+            .collect());
     }
-    let content = std::fs::read_to_string(path)?;
-    Ok(content
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect())
+    crate::engine::read_targets()
 }
 
 pub fn write_target(entries: &[String]) -> anyhow::Result<()> {
-    let mut content = entries.join("\n");
-    if !content.is_empty() {
-        content.push('\n');
+    if crate::engine::Engine::detect() == crate::engine::Engine::TrickyStore {
+        let mut content = entries.join("\n");
+        if !content.is_empty() {
+            content.push('\n');
+        }
+        return atomic_write(Path::new(TARGET_FILE), content.as_bytes());
     }
-    atomic_write(Path::new(TARGET_FILE), content.as_bytes())
+    crate::engine::write_targets(entries)
 }
 
 pub fn add_package(pkg: &str, exclude_list: &[String]) -> anyhow::Result<bool> {

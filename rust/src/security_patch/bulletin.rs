@@ -1,14 +1,17 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use crate::platform::network;
 
-const BULLETIN_URL: &str =
-    "https://source.android.com/docs/security/bulletin/pixel";
+const BULLETIN_URL: &str = "https://source.android.com/docs/security/bulletin/pixel";
 
 const FALLBACK_PATCHES: &[&str] = &[
-    "2026-03-01", "2026-02-01", "2026-01-01",
-    "2025-12-01", "2025-11-01", "2025-10-01",
+    "2026-03-01",
+    "2026-02-01",
+    "2026-01-01",
+    "2025-12-01",
+    "2025-11-01",
+    "2025-10-01",
 ];
 
 pub fn fetch_latest_patch() -> Result<String> {
@@ -25,8 +28,8 @@ pub fn fetch_latest_patch() -> Result<String> {
 }
 
 fn fetch_from_bulletin() -> Result<String> {
-    let html = network::download_text(BULLETIN_URL)
-        .context("failed to download security bulletin")?;
+    let html =
+        network::download_text(BULLETIN_URL).context("failed to download security bulletin")?;
     parse_patch_date(&html)
 }
 
@@ -49,10 +52,7 @@ fn extract_date_from_td(line: &str) -> Option<String> {
     if !trimmed.starts_with("<td>") {
         return None;
     }
-    let content = trimmed
-        .strip_prefix("<td>")?
-        .strip_suffix("</td>")?
-        .trim();
+    let content = trimmed.strip_prefix("<td>")?.strip_suffix("</td>")?.trim();
     if is_valid_patch_date(content) {
         Some(content.to_string())
     } else {

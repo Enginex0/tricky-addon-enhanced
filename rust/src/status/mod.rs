@@ -11,7 +11,6 @@ use crate::platform::packages;
 const TS_MODULE_PROP: &str = "/data/adb/modules/tricky_store/module.prop";
 const TS_MODULE_PROP_HIDDEN: &str = "/data/adb/modules/.tricky_store/module.prop";
 const ORIGINAL_DESC_FILE: &str = "/data/adb/tricky_store/ta-enhanced/description.bak";
-const TARGET_FILE: &str = "/data/adb/tricky_store/target.txt";
 const BOOT_HASH_FILE: &str = "/data/adb/boot_hash";
 const SECURITY_PATCH_FILE: &str = "/data/adb/tricky_store/security_patch.txt";
 
@@ -87,15 +86,15 @@ pub fn build_description(cfg: &Config) -> String {
 }
 
 pub fn count_active_apps() -> u32 {
-    let targets = match std::fs::read_to_string(TARGET_FILE) {
-        Ok(c) => c,
+    let targets = match crate::engine::read_targets() {
+        Ok(targets) => targets,
         Err(_) => return 0,
     };
 
     let target_pkgs: HashSet<&str> = targets
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('!'))
+        .iter()
+        .map(String::as_str)
+        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with('!'))
         .collect();
 
     if target_pkgs.is_empty() {
@@ -120,6 +119,12 @@ pub fn get_keybox_label(cfg: &Config) -> &'static str {
 }
 
 pub fn get_patch_level() -> String {
+    if let Ok((system, boot, _)) = crate::engine::read_patch_dates() {
+        let value = if boot.is_empty() { system } else { boot };
+        if !value.is_empty() {
+            return value;
+        }
+    }
     if let Ok(content) = std::fs::read_to_string(SECURITY_PATCH_FILE) {
         for line in content.lines() {
             if let Some(val) = line.strip_prefix("boot=") {
@@ -144,7 +149,7 @@ pub fn get_vbhash_active() -> bool {
 }
 
 pub fn save_original_description() -> Result<()> {
-    let desc_path = Path::new(ORIGINAL_DESC_FILE);
+    let desc_path = original_description_path();
     if desc_path.exists() {
         return Ok(());
     }
@@ -153,21 +158,29 @@ pub fn save_original_description() -> Result<()> {
         if let Some(parent) = desc_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(desc_path, desc.as_bytes())
+        std::fs::write(&desc_path, desc.as_bytes())
             .context("failed to save original description")?;
     }
     Ok(())
 }
 
 pub fn restore_original_description() -> Result<()> {
-    let desc_path = Path::new(ORIGINAL_DESC_FILE);
+    let desc_path = original_description_path();
     if !desc_path.exists() {
         return Ok(());
     }
-    let original = std::fs::read_to_string(desc_path)
+    let original = std::fs::read_to_string(&desc_path)
         .context("failed to read original description")?;
     update_prop_description(&original)?;
     Ok(())
+}
+
+fn original_description_path() -> std::path::PathBuf {
+    if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        std::path::PathBuf::from("/data/adb/tricky_store/ta-enhanced/addon-description.bak")
+    } else {
+        std::path::PathBuf::from(ORIGINAL_DESC_FILE)
+    }
 }
 
 pub fn update_prop_description(desc: &str) -> Result<()> {
@@ -215,14 +228,17 @@ fn push_live_description(desc: &str) {
         .unwrap_or("ksud");
 
     // ksud requires --internal <module-id>; the KSU_MODULE env var is ignored.
-    // Target tricky_store: that is the visible module the user sees once
-    // TA_enhanced's module.prop is removed in service.sh.
+    let module_id = if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        "TA_enhanced"
+    } else {
+        "tricky_store"
+    };
     let _ = Command::new(ksud)
         .args([
             "module",
             "config",
             "--internal",
-            "tricky_store",
+            module_id,
             "set",
             "override.description",
             desc,
@@ -251,7 +267,15 @@ pub fn scan_xposed() -> Result<Vec<String>> {
 }
 
 fn find_module_prop() -> Option<String> {
-    [TS_MODULE_PROP, TS_MODULE_PROP_HIDDEN]
+    let candidates: &[&str] = if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        &[
+            "/data/adb/modules/.TA_enhanced/module.prop",
+            "/data/adb/modules/TA_enhanced/module.prop",
+        ]
+    } else {
+        &[TS_MODULE_PROP, TS_MODULE_PROP_HIDDEN]
+    };
+    candidates
         .iter()
         .find(|p| Path::new(p).exists())
         .map(|p| p.to_string())

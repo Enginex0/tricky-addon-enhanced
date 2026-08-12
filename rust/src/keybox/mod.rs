@@ -1,21 +1,18 @@
+pub mod generate;
 pub mod sources;
 pub mod validate;
-pub mod generate;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use anyhow::{Context, Result, bail};
-use serde::{Serialize, Deserialize};
-use tracing::{info, warn, error};
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, warn};
 
 use crate::cli::KeyboxAction;
 use crate::config::Config;
 use crate::platform::fs::atomic_write;
-
-const TARGET_KEYBOX: &str = "/data/adb/tricky_store/keybox.xml";
-const BACKUP_KEYBOX: &str = "/data/adb/tricky_store/keybox.xml.bak";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -68,15 +65,18 @@ pub fn handle_keybox(action: KeyboxAction, cfg: &Config) -> Result<()> {
         }
         KeyboxAction::Validate { path } => {
             use std::io::Write;
-            let target = path.as_deref().unwrap_or(TARGET_KEYBOX);
-            let report = validate::validate_file_full(Path::new(target))?;
+            let target = match path {
+                Some(path) => PathBuf::from(path),
+                None => crate::engine::Engine::detect().keybox_path()?,
+            };
+            let report = validate::validate_file_full(&target)?;
             let mut stdout = std::io::stdout().lock();
             writeln!(stdout, "{}", serde_json::to_string_pretty(&report)?)?;
             stdout.flush()?;
             if report.ok {
                 Ok(())
             } else {
-                bail!("keybox validation failed: {target}")
+                bail!("keybox validation failed: {}", target.display())
             }
         }
         KeyboxAction::SetCustom { path } => {
@@ -105,14 +105,15 @@ pub fn handle_keybox(action: KeyboxAction, cfg: &Config) -> Result<()> {
 
 pub fn fetch(config: &Config) -> Result<FetchResult> {
     let preferred = KeyboxSource::from_str(&config.keybox.source).unwrap_or_else(|e| {
-        warn!("keybox source {:?} invalid ({e}); defaulting to yurikey", config.keybox.source);
+        warn!(
+            "keybox source {:?} invalid ({e}); defaulting to yurikey",
+            config.keybox.source
+        );
         KeyboxSource::default()
     });
     let custom_url = &config.keybox.custom_url;
 
     let order = build_source_order(preferred);
-    let existing_hash = current_keybox_hash();
-
     for source in &order {
         let result = match source {
             KeyboxSource::Yurikey => sources::fetch_yurikey(),
@@ -151,13 +152,19 @@ pub fn fetch(config: &Config) -> Result<FetchResult> {
                     .map(|k| k.root_type.as_snake_case())
                     .unwrap_or("unknown");
                 let new_hash = sources::compute_sha256(&data);
-                if !new_hash.is_empty() && Some(&new_hash) == existing_hash.as_ref() {
-                    info!("keybox from {} (root={root_type}) identical to installed, skipping", source);
-                    return Ok(FetchResult { source: source_label(source) });
+                if !install_data(&data, &new_hash)? {
+                    info!(
+                        "keybox from {} (root={root_type}) identical to installed, skipping",
+                        source
+                    );
+                    return Ok(FetchResult {
+                        source: source_label(source),
+                    });
                 }
-                install_data(&data)?;
                 info!("keybox installed from {} (root={root_type})", source);
-                return Ok(FetchResult { source: source_label(source) });
+                return Ok(FetchResult {
+                    source: source_label(source),
+                });
             }
             Err(e) => {
                 warn!("keybox source {} failed: {e}", source);
@@ -174,19 +181,21 @@ pub fn fetch(config: &Config) -> Result<FetchResult> {
 }
 
 pub fn backup() -> Result<()> {
-    let target = Path::new(TARGET_KEYBOX);
+    let target = crate::engine::Engine::detect().keybox_path()?;
+    backup_target(&target)
+}
+
+fn backup_target(target: &Path) -> Result<()> {
     if !target.exists() {
-        bail!("no keybox to backup at {}", TARGET_KEYBOX);
+        bail!("no keybox to backup at {}", target.display());
     }
-    let bak = Path::new(BACKUP_KEYBOX);
+    let bak = target.with_extension("xml.bak");
     if bak.exists() {
-        let bak1 = PathBuf::from(format!("{}.1", BACKUP_KEYBOX));
-        std::fs::rename(bak, &bak1)
-            .context("failed to rotate backup")?;
+        let bak1 = PathBuf::from(format!("{}.1", bak.display()));
+        std::fs::rename(&bak, &bak1).context("failed to rotate backup")?;
     }
-    std::fs::copy(target, bak)
-        .context("failed to create keybox backup")?;
-    info!("keybox backed up to {}", BACKUP_KEYBOX);
+    std::fs::copy(&target, &bak).context("failed to create keybox backup")?;
+    info!("keybox backed up to {}", bak.display());
     Ok(())
 }
 
@@ -195,37 +204,60 @@ pub fn set_custom(path: &Path) -> Result<()> {
         bail!("custom keybox not found: {}", path.display());
     }
     let data = std::fs::read(path)?;
-    let report = validate::validate_full(&data)
-        .with_context(|| format!("validating {}", path.display()))?;
+    let report =
+        validate::validate_full(&data).with_context(|| format!("validating {}", path.display()))?;
     if !report.ok {
         let summary = report
             .keys
             .iter()
             .filter(|k| !k.ok)
-            .map(|k| format!("Keybox#{}/Key#{} ({}): {}", k.keybox_index, k.key_index, k.algorithm, k.errors.join("; ")))
+            .map(|k| {
+                format!(
+                    "Keybox#{}/Key#{} ({}): {}",
+                    k.keybox_index,
+                    k.key_index,
+                    k.algorithm,
+                    k.errors.join("; ")
+                )
+            })
             .collect::<Vec<_>>()
             .join(" | ");
         bail!("custom keybox failed validation: {summary}");
     }
-    install_data(&data)?;
+    install_data(&data, &sources::compute_sha256(&data))?;
     let root_type = report
         .keys
         .first()
         .map(|k| k.root_type.as_snake_case())
         .unwrap_or("unknown");
-    info!("custom keybox installed from {} (root={root_type})", path.display());
+    info!(
+        "custom keybox installed from {} (root={root_type})",
+        path.display()
+    );
     Ok(())
 }
 
 pub fn get_sources(config: &Config) -> Vec<SourceInfo> {
     let active = KeyboxSource::from_str(&config.keybox.source).unwrap_or_else(|e| {
-        warn!("keybox source {:?} invalid ({e}); defaulting to yurikey", config.keybox.source);
+        warn!(
+            "keybox source {:?} invalid ({e}); defaulting to yurikey",
+            config.keybox.source
+        );
         KeyboxSource::default()
     });
     vec![
-        SourceInfo { name: "yurikey".into(), active: active == KeyboxSource::Yurikey },
-        SourceInfo { name: "upstream".into(), active: active == KeyboxSource::Upstream },
-        SourceInfo { name: "custom".into(), active: active == KeyboxSource::Custom },
+        SourceInfo {
+            name: "yurikey".into(),
+            active: active == KeyboxSource::Yurikey,
+        },
+        SourceInfo {
+            name: "upstream".into(),
+            active: active == KeyboxSource::Upstream,
+        },
+        SourceInfo {
+            name: "custom".into(),
+            active: active == KeyboxSource::Custom,
+        },
     ]
 }
 
@@ -244,35 +276,41 @@ fn build_source_order(preferred: KeyboxSource) -> Vec<KeyboxSource> {
     order
 }
 
-fn install_data(data: &[u8]) -> Result<()> {
-    if Path::new(TARGET_KEYBOX).exists() {
-        if let Err(e) = backup() {
+fn install_data(data: &[u8], new_hash: &str) -> Result<bool> {
+    let target = crate::engine::Engine::detect().keybox_path()?;
+    if !new_hash.is_empty() && current_keybox_hash(&target).as_deref() == Some(new_hash) {
+        return Ok(false);
+    }
+    if target.exists() {
+        if let Err(e) = backup_target(&target) {
             error!("backup failed before install: {e}");
             bail!("aborting keybox install: backup failed");
         }
     }
-    atomic_write(Path::new(TARGET_KEYBOX), data)
-        .context("failed to write keybox")?;
+    atomic_write(&target, data).context("failed to write keybox")?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(
-            TARGET_KEYBOX,
-            std::fs::Permissions::from_mode(0o600),
-        );
+        let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600));
     }
-    Ok(())
+    Ok(true)
 }
 
-fn current_keybox_hash() -> Option<String> {
-    let data = std::fs::read(TARGET_KEYBOX).ok()?;
+fn current_keybox_hash(target: &Path) -> Option<String> {
+    let data = std::fs::read(target).ok()?;
     let hash = sources::compute_sha256(&data);
-    if hash.is_empty() { None } else { Some(hash) }
+    if hash.is_empty() {
+        None
+    } else {
+        Some(hash)
+    }
 }
 
 fn has_valid_existing_keybox() -> bool {
-    Path::new(TARGET_KEYBOX).exists()
-        && validate::validate_file(Path::new(TARGET_KEYBOX)).is_ok()
+    let Ok(target) = crate::engine::Engine::detect().keybox_path() else {
+        return false;
+    };
+    target.exists() && validate::validate_file(&target).is_ok()
 }
 
 fn source_label(s: &KeyboxSource) -> &'static str {

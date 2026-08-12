@@ -1,9 +1,9 @@
 pub mod migrate;
 
+use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use anyhow::anyhow;
-use serde::{Serialize, Deserialize};
 
 pub static SELF_WRITE: AtomicBool = AtomicBool::new(false);
 
@@ -28,11 +28,15 @@ pub struct Config {
 #[serde(default)]
 pub struct GeneralConfig {
     pub module_id: String,
+    pub teesim_profile: String,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
-        Self { module_id: "TA_enhanced".into() }
+        Self {
+            module_id: "TA_enhanced".into(),
+            teesim_profile: String::new(),
+        }
     }
 }
 
@@ -165,7 +169,10 @@ pub struct ConflictConfig {
 
 impl Default for ConflictConfig {
     fn default() -> Self {
-        Self { enabled: true, auto_remove: false }
+        Self {
+            enabled: true,
+            auto_remove: false,
+        }
     }
 }
 
@@ -225,15 +232,17 @@ pub struct UiConfig {
 
 impl Default for UiConfig {
     fn default() -> Self {
-        Self { language: "en".into() }
+        Self {
+            language: "en".into(),
+        }
     }
 }
 
 pub const DEFAULT_CONFIG_PATH: &str = "/data/adb/tricky_store/ta-enhanced/config.toml";
 
 const SUPPORTED_LANGS: &[&str] = &[
-    "ar", "az", "bn", "de", "el", "en", "es-ES", "fa", "fr", "id", "it",
-    "ja", "ko", "pl", "pt-BR", "ru", "th", "tl", "tr", "uk", "vi", "zh-CN", "zh-TW",
+    "ar", "az", "bn", "de", "el", "en", "es-ES", "fa", "fr", "id", "it", "ja", "ko", "pl", "pt-BR",
+    "ru", "th", "tl", "tr", "uk", "vi", "zh-CN", "zh-TW",
 ];
 
 fn is_supported_lang(code: &str) -> bool {
@@ -250,19 +259,43 @@ fn parse_bool(s: &str) -> anyhow::Result<bool> {
 
 const ALL_KEYS: &[&str] = &[
     "general.module_id",
-    "keybox.enabled", "keybox.interval", "keybox.source", "keybox.custom_url",
-    "keybox.boot_retries", "keybox.retry_delay",
-    "security_patch.auto_update", "security_patch.interval",
-    "security_patch.custom_date", "security_patch.boot_retries",
-    "automation.enabled", "automation.interval", "automation.use_inotify",
-    "automation.exclude_list", "automation.merge_denylist",
-    "health.enabled", "health.interval", "health.grace_period",
-    "health.max_restarts", "health.backoff_init", "health.backoff_cap",
-    "status.enabled", "status.interval", "status.emoji",
+    "general.teesim_profile",
+    "keybox.enabled",
+    "keybox.interval",
+    "keybox.source",
+    "keybox.custom_url",
+    "keybox.boot_retries",
+    "keybox.retry_delay",
+    "security_patch.auto_update",
+    "security_patch.interval",
+    "security_patch.custom_date",
+    "security_patch.boot_retries",
+    "automation.enabled",
+    "automation.interval",
+    "automation.use_inotify",
+    "automation.exclude_list",
+    "automation.merge_denylist",
+    "health.enabled",
+    "health.interval",
+    "health.grace_period",
+    "health.max_restarts",
+    "health.backoff_init",
+    "health.backoff_cap",
+    "status.enabled",
+    "status.interval",
+    "status.emoji",
     "vbhash.enabled",
-    "conflict.enabled", "conflict.auto_remove",
-    "region.enabled", "region.hwc", "region.hwcountry", "region.mod_device", "region.hardware_sku",
-    "logging.level", "logging.max_size_mb", "logging.max_files", "logging.log_dir",
+    "conflict.enabled",
+    "conflict.auto_remove",
+    "region.enabled",
+    "region.hwc",
+    "region.hwcountry",
+    "region.mod_device",
+    "region.hardware_sku",
+    "logging.level",
+    "logging.max_size_mb",
+    "logging.max_files",
+    "logging.log_dir",
     "ui.language",
 ];
 
@@ -272,9 +305,7 @@ impl Config {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let content = std::fs::read_to_string(path)?;
-        let mut config: Config = toml::from_str(&content)?;
-        let warnings = config.validate();
+        let (config, warnings) = Self::read_validated(path)?;
         for w in &warnings {
             tracing::warn!("{}", w);
         }
@@ -283,6 +314,13 @@ impl Config {
             config.save(Some(path))?;
         }
         Ok(config)
+    }
+
+    fn read_validated(path: &Path) -> anyhow::Result<(Self, Vec<String>)> {
+        let content = std::fs::read_to_string(path)?;
+        let mut config: Config = toml::from_str(&content)?;
+        let warnings = config.validate();
+        Ok((config, warnings))
     }
 
     pub fn save(&self, path: Option<&Path>) -> anyhow::Result<()> {
@@ -318,6 +356,7 @@ impl Config {
     pub fn get(&self, key: &str) -> Option<String> {
         match key {
             "general.module_id" => Some(self.general.module_id.clone()),
+            "general.teesim_profile" => Some(self.general.teesim_profile.clone()),
             "keybox.enabled" => Some(self.keybox.enabled.to_string()),
             "keybox.interval" => Some(self.keybox.interval.to_string()),
             "keybox.source" => Some(self.keybox.source.clone()),
@@ -361,6 +400,20 @@ impl Config {
 
     pub fn set(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
         match key {
+            "general.teesim_profile" => {
+                let value = value.trim();
+                if !value.is_empty()
+                    && (value.len() > 32
+                        || !value
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+                {
+                    return Err(anyhow!(
+                        "TEESimulator profile must be 1-32 letters, digits, '-' or '_'"
+                    ));
+                }
+                self.general.teesim_profile = value.to_string();
+            }
             "keybox.enabled" => self.keybox.enabled = parse_bool(value)?,
             "keybox.interval" => self.keybox.interval = value.parse()?,
             "keybox.source" => self.keybox.source = value.to_string(),
@@ -376,7 +429,8 @@ impl Config {
             "automation.use_inotify" => self.automation.use_inotify = parse_bool(value)?,
             "automation.merge_denylist" => self.automation.merge_denylist = parse_bool(value)?,
             "automation.exclude_list" => {
-                self.automation.exclude_list = value.split(',')
+                self.automation.exclude_list = value
+                    .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -420,14 +474,21 @@ impl Config {
         macro_rules! clamp_min {
             ($field:expr, $min:expr, $name:expr) => {
                 if $field < $min {
-                    warnings.push(format!("{}: clamped {} -> {} (minimum)", $name, $field, $min));
+                    warnings.push(format!(
+                        "{}: clamped {} -> {} (minimum)",
+                        $name, $field, $min
+                    ));
                     $field = $min;
                 }
             };
         }
 
         clamp_min!(self.keybox.interval, 60, "keybox.interval");
-        clamp_min!(self.security_patch.interval, 3600, "security_patch.interval");
+        clamp_min!(
+            self.security_patch.interval,
+            3600,
+            "security_patch.interval"
+        );
         clamp_min!(self.automation.interval, 5, "automation.interval");
         clamp_min!(self.health.interval, 5, "health.interval");
         clamp_min!(self.status.interval, 10, "status.interval");
@@ -445,7 +506,10 @@ impl Config {
         match self.keybox.source.as_str() {
             "yurikey" | "upstream" | "custom" => {}
             other => {
-                warnings.push(format!("keybox.source: legacy value '{}' migrated to 'yurikey'", other));
+                warnings.push(format!(
+                    "keybox.source: legacy value '{}' migrated to 'yurikey'",
+                    other
+                ));
                 self.keybox.source = "yurikey".into();
             }
         }
@@ -455,11 +519,15 @@ impl Config {
         }
         if !is_supported_lang(&self.ui.language) {
             let prev = std::mem::take(&mut self.ui.language);
-            warnings.push(format!("ui.language: unsupported value '{}' reset to 'en'", prev));
+            warnings.push(format!(
+                "ui.language: unsupported value '{}' reset to 'en'",
+                prev
+            ));
             self.ui.language = "en".into();
         }
         if !self.logging.log_dir.starts_with("/data/adb/") {
-            warnings.push("logging.log_dir: reset to default (must be under /data/adb/)".to_string());
+            warnings
+                .push("logging.log_dir: reset to default (must be under /data/adb/)".to_string());
             self.logging.log_dir = "/data/adb/tricky_store/ta-enhanced/logs".into();
         }
 
@@ -500,10 +568,7 @@ impl Config {
     }
 }
 
-pub fn handle_config(
-    action: crate::cli::ConfigAction,
-    cfg: &Config,
-) -> anyhow::Result<()> {
+pub fn handle_config(action: crate::cli::ConfigAction, cfg: &Config) -> anyhow::Result<()> {
     use crate::cli::ConfigAction;
     match action {
         ConfigAction::Get { key } => {
@@ -514,11 +579,13 @@ pub fn handle_config(
             Ok(())
         }
         ConfigAction::Set { key, value } => {
-            let mut cfg = cfg.clone();
-            cfg.set(&key, &value)?;
+            if key == "general.teesim_profile" {
+                crate::engine::validate_profile_choice(value.trim())?;
+            }
+            let mut current = Config::load(None)?;
+            current.set(&key, &value)?;
             Config::backup(None)?;
-            cfg.save(None)?;
-            Ok(())
+            current.save(None)
         }
         ConfigAction::Migrate => {
             let ini_path = std::path::Path::new("/data/adb/tricky_store/enhanced.conf");

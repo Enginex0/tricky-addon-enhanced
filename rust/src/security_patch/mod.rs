@@ -2,7 +2,7 @@ pub mod bulletin;
 
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use tracing::{info, warn};
 
@@ -18,6 +18,7 @@ const TS_MODULE_PROP: &str = "/data/adb/modules/tricky_store/module.prop";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum TrickyStoreVariant {
+    TeeSimulatorV4,
     James,
     Standard,
     Legacy,
@@ -26,6 +27,7 @@ pub enum TrickyStoreVariant {
 impl std::fmt::Display for TrickyStoreVariant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::TeeSimulatorV4 => write!(f, "TEESimulator v4"),
             Self::James => write!(f, "James"),
             Self::Standard => write!(f, "Standard"),
             Self::Legacy => write!(f, "Legacy"),
@@ -61,9 +63,31 @@ pub fn handle_security_patch(action: SecurityPatchAction, cfg: &Config) -> Resul
             println!("{output}");
             Ok(())
         }
-        SecurityPatchAction::SetCustom { system, boot, vendor } => {
+        SecurityPatchAction::SetCustom {
+            system,
+            boot,
+            vendor,
+        } => {
             set_custom(&system, &boot, &vendor)?;
             println!("custom security patch dates applied");
+            Ok(())
+        }
+        SecurityPatchAction::ImportLegacy => {
+            if crate::engine::Engine::detect() != crate::engine::Engine::TeeSimulatorV4 {
+                bail!("legacy patch import is only available for TEESimulator v4");
+            }
+            crate::engine::import_legacy_patch()?;
+            println!("legacy security patch imported");
+            Ok(())
+        }
+        SecurityPatchAction::ExportLegacy => {
+            if crate::engine::Engine::detect() != crate::engine::Engine::TeeSimulatorV4 {
+                return Ok(());
+            }
+            let (system, boot, vendor) = crate::engine::read_patch_dates()?;
+            let content = format!("system={system}\nboot={boot}\nvendor={vendor}\n");
+            atomic_write(Path::new(SECURITY_PATCH_FILE), content.as_bytes())?;
+            println!("TEESimulator security patch exported");
             Ok(())
         }
     }
@@ -88,11 +112,13 @@ pub fn get_boot_patch_date() -> Option<String> {
 }
 
 pub fn get_vendor_patch_date() -> Option<String> {
-    getprop("ro.vendor.build.security_patch")
-        .or_else(|| getprop("ro.build.version.security_patch"))
+    getprop("ro.vendor.build.security_patch").or_else(|| getprop("ro.build.version.security_patch"))
 }
 
 pub fn detect_variant() -> TrickyStoreVariant {
+    if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        return TrickyStoreVariant::TeeSimulatorV4;
+    }
     let prop_content = std::fs::read_to_string(TS_MODULE_PROP).unwrap_or_default();
 
     if prop_content.contains("James") && !prop_content.contains("beakthoven") {
@@ -137,14 +163,28 @@ pub fn set(config: &Config) -> Result<()> {
 
 fn patch_file_already_matches(variant: &TrickyStoreVariant, dates: &PatchDates) -> bool {
     match variant {
+        TrickyStoreVariant::TeeSimulatorV4 => crate::engine::read_patch_dates()
+            .map(|current| {
+                current
+                    == (
+                        dates.system.clone(),
+                        dates.boot.clone(),
+                        dates.vendor.clone(),
+                    )
+            })
+            .unwrap_or(false),
         TrickyStoreVariant::Standard => {
-            let Ok(content) = std::fs::read_to_string(SECURITY_PATCH_FILE) else { return false; };
+            let Ok(content) = std::fs::read_to_string(SECURITY_PATCH_FILE) else {
+                return false;
+            };
             content.contains(&format!("system={}", dates.system))
                 && content.contains(&format!("boot={}", dates.boot))
                 && content.contains(&format!("vendor={}", dates.vendor))
         }
         TrickyStoreVariant::James => {
-            let Ok(content) = std::fs::read_to_string(DEVCONFIG_TOML) else { return false; };
+            let Ok(content) = std::fs::read_to_string(DEVCONFIG_TOML) else {
+                return false;
+            };
             content.contains(&format!("securityPatch = \"{}\"", dates.system))
         }
         TrickyStoreVariant::Legacy => false,
@@ -154,9 +194,21 @@ fn patch_file_already_matches(variant: &TrickyStoreVariant, dates: &PatchDates) 
 pub fn set_custom(system: &str, boot: &str, vendor: &str) -> Result<()> {
     let device = read_device_dates();
     let dates = PatchDates {
-        system: if system == "prop" { device.system } else { system.to_string() },
-        boot: if boot == "prop" { device.boot } else { boot.to_string() },
-        vendor: if vendor == "prop" { device.vendor } else { vendor.to_string() },
+        system: if system == "prop" {
+            device.system
+        } else {
+            system.to_string()
+        },
+        boot: if boot == "prop" {
+            device.boot
+        } else {
+            boot.to_string()
+        },
+        vendor: if vendor == "prop" {
+            device.vendor
+        } else {
+            vendor.to_string()
+        },
     };
 
     let variant = detect_variant();
@@ -169,7 +221,10 @@ pub fn update(config: &Config) -> Result<()> {
         return Ok(());
     }
     if !config.security_patch.custom_date.is_empty() {
-        info!("enforcing user custom patch: {}", config.security_patch.custom_date);
+        info!(
+            "enforcing user custom patch: {}",
+            config.security_patch.custom_date
+        );
         return set(config);
     }
     update_force()
@@ -184,7 +239,10 @@ pub fn update_force() -> Result<()> {
     };
 
     let variant = detect_variant();
-    info!("updating security patch to {} (variant: {variant})", dates.system);
+    info!(
+        "updating security patch to {} (variant: {variant})",
+        dates.system
+    );
     write_patch_dates(&variant, &dates)
 }
 
@@ -199,6 +257,14 @@ pub fn show_current() -> Result<String> {
     output.push_str(&format!("vendor: {}\n", dates.vendor));
 
     match variant {
+        TrickyStoreVariant::TeeSimulatorV4 => {
+            if let Ok((system, boot, vendor)) = crate::engine::read_patch_dates() {
+                output.push_str(&format!(
+                    "config_content:\nsystem={system}\nboot={boot}\nvendor={vendor}\n"
+                ));
+            }
+            output.push_str("config_file: /data/adb/teesim/config.json\n");
+        }
         TrickyStoreVariant::James => {
             let path = Path::new(DEVCONFIG_TOML);
             if path.exists() {
@@ -226,11 +292,18 @@ pub fn show_current() -> Result<String> {
 }
 
 fn write_patch_dates(variant: &TrickyStoreVariant, dates: &PatchDates) -> Result<()> {
-    crate::platform::fs::ensure_dir(Path::new(TS_DIR))?;
-
     match variant {
-        TrickyStoreVariant::James => write_james(dates),
-        TrickyStoreVariant::Standard => write_standard(dates),
+        TrickyStoreVariant::TeeSimulatorV4 => {
+            crate::engine::write_patch_dates(&dates.system, &dates.boot, &dates.vendor)
+        }
+        TrickyStoreVariant::James => {
+            crate::platform::fs::ensure_dir(Path::new(TS_DIR))?;
+            write_james(dates)
+        }
+        TrickyStoreVariant::Standard => {
+            crate::platform::fs::ensure_dir(Path::new(TS_DIR))?;
+            write_standard(dates)
+        }
         TrickyStoreVariant::Legacy => write_legacy(dates),
     }
 }
@@ -246,7 +319,8 @@ fn write_james(dates: &PatchDates) -> Result<()> {
     let new_line = format!("securityPatch = \"{}\"", dates.system);
 
     let updated = if content.contains("securityPatch") {
-        content.lines()
+        content
+            .lines()
             .map(|line| {
                 if line.trim_start().starts_with("securityPatch") {
                     new_line.as_str()
@@ -257,7 +331,8 @@ fn write_james(dates: &PatchDates) -> Result<()> {
             .collect::<Vec<_>>()
             .join("\n")
     } else if content.contains("[deviceProps]") {
-        content.lines()
+        content
+            .lines()
             .flat_map(|line| {
                 if line.trim() == "[deviceProps]" {
                     vec![line, &new_line as &str]
@@ -273,8 +348,7 @@ fn write_james(dates: &PatchDates) -> Result<()> {
         format!("{content}\n{new_line}")
     };
 
-    atomic_write(path, updated.as_bytes())
-        .context("failed to write devconfig.toml")?;
+    atomic_write(path, updated.as_bytes()).context("failed to write devconfig.toml")?;
     info!("wrote security patch to devconfig.toml: {}", dates.system);
     Ok(())
 }
@@ -290,10 +364,8 @@ fn write_standard(dates: &PatchDates) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(
-            SECURITY_PATCH_FILE,
-            std::fs::Permissions::from_mode(0o644),
-        );
+        let _ =
+            std::fs::set_permissions(SECURITY_PATCH_FILE, std::fs::Permissions::from_mode(0o644));
     }
 
     info!("wrote security patch to security_patch.txt");
@@ -314,7 +386,8 @@ fn write_legacy(dates: &PatchDates) -> Result<()> {
 }
 
 fn extract_version_code(prop_content: &str) -> Option<u32> {
-    prop_content.lines()
+    prop_content
+        .lines()
         .find(|l| l.starts_with("versionCode="))
         .and_then(|l| l.strip_prefix("versionCode="))
         .and_then(|v| v.trim().parse().ok())

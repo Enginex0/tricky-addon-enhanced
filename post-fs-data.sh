@@ -24,10 +24,11 @@ while [ -z "$(ls -A /data/adb/modules/ 2>/dev/null)" ]; do
     sleep 0.5
 done
 _pfd_log "Modules directory ready (waited ${_wait_count} iterations)"
+. "$MODPATH/common/detect_engine.sh"
 
-# Self-removal if TrickyStore missing
-if [ ! -d "$TS" ] || [ -f "$TS/remove" ]; then
-    _pfd_log "TrickyStore missing or removing - marking self for removal"
+# Self-removal only when neither supported engine is present.
+if { [ ! -d "$TS" ] || [ -f "$TS/remove" ]; } && [ "$ENGINE" != "teesim" ]; then
+    _pfd_log "No supported attestation engine - marking self for removal"
     if [ -f "$MODPATH/action.sh" ]; then
         # Magisk hidden module: recreate stub at real ID
         rm -rf "/data/adb/modules/TA_enhanced" 2>/dev/null
@@ -38,10 +39,12 @@ if [ ! -d "$TS" ] || [ -f "$TS/remove" ]; then
     fi
 fi
 
-# Clean stale symlinks
-[ -L "$TS/webroot" ] && rm -f "$TS/webroot"
-[ -L "$TS/action.sh" ] && rm -f "$TS/action.sh"
-[ -L "$TS/banner.png" ] && rm -f "$TS/banner.png"
+# Clean stale links only from TrickyStore. Never touch TEESimulator's WebUI.
+if [ -d "$TS" ] && [ "$ENGINE" != "teesim" ]; then
+    [ -L "$TS/webroot" ] && rm -f "$TS/webroot"
+    [ -L "$TS/action.sh" ] && rm -f "$TS/action.sh"
+    [ -L "$TS/banner.png" ] && rm -f "$TS/banner.png"
+fi
 
 # Root Manager Detection
 if [ -n "$APATCH" ]; then

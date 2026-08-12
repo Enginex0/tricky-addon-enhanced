@@ -79,6 +79,16 @@ pub fn handle_health(action: HealthAction, cfg: &Config) -> anyhow::Result<()> {
 }
 
 pub fn detect_engine() -> String {
+    if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        if let Some(module) = crate::engine::Engine::TeeSimulatorV4.module_dir() {
+            if let Ok(content) = std::fs::read_to_string(module.join("module.prop")) {
+                if let Some(name) = content.lines().find_map(|line| line.strip_prefix("name=")) {
+                    return name.trim().to_string();
+                }
+            }
+        }
+        return "TEESimulator v4".to_string();
+    }
     if let Ok(entries) = std::fs::read_dir("/data/adb/modules") {
         for entry in entries.flatten() {
             if let Ok(content) = std::fs::read_to_string(entry.path().join("module.prop")) {
@@ -106,16 +116,14 @@ pub fn detect_engine() -> String {
 }
 
 pub fn is_engine_enabled() -> bool {
-    for dir in [TS_MODULE, TS_MODULE_HIDDEN] {
-        let p = Path::new(dir);
-        if p.is_dir() {
-            return !p.join("disable").exists();
-        }
-    }
-    false
+    crate::engine::Engine::detect().is_enabled()
 }
 
 fn detect_nice_name() -> Option<String> {
+    if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        // v4's service loop supervises its daemon; avoid competing with it.
+        return None;
+    }
     for dir in [TS_MODULE, TS_MODULE_HIDDEN] {
         let service_sh = Path::new(dir).join("service.sh");
         if let Ok(content) = std::fs::read_to_string(&service_sh) {
@@ -158,7 +166,7 @@ pub fn tee_status() -> anyhow::Result<HealthState> {
 }
 
 pub fn check_once(state: &mut HealthState, cfg: &Config) -> anyhow::Result<bool> {
-    if !Path::new(TS_MODULE).is_dir() && !Path::new(TS_MODULE_HIDDEN).is_dir() {
+    if crate::engine::Engine::detect().module_dir().is_none() {
         return Ok(true);
     }
 

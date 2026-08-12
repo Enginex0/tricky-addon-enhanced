@@ -1,30 +1,33 @@
 use anyhow::{Context, Result};
 use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256};
-use rsa::RsaPrivateKey;
 use rsa::pkcs8::EncodePrivateKey;
+use rsa::RsaPrivateKey;
 
-use std::path::Path;
 use tracing::info;
 
 use crate::platform::fs::atomic_write;
 
-const TARGET_KEYBOX: &str = "/data/adb/tricky_store/keybox.xml";
-const BACKUP_KEYBOX: &str = "/data/adb/tricky_store/keybox.xml.bak";
-
 pub fn generate_and_install() -> Result<()> {
     let xml = generate()?;
+    let engine = crate::engine::Engine::detect();
+    let target = engine.keybox_path()?;
+    let backup = target.with_extension("xml.bak");
 
-    if Path::new(TARGET_KEYBOX).exists() {
-        std::fs::copy(TARGET_KEYBOX, BACKUP_KEYBOX)
-            .context("failed to backup existing keybox")?;
+    if target.exists() {
+        std::fs::copy(&target, &backup).context("failed to backup existing keybox")?;
     }
 
-    atomic_write(Path::new(TARGET_KEYBOX), xml.as_bytes())?;
+    atomic_write(&target, xml.as_bytes())?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(TARGET_KEYBOX, std::fs::Permissions::from_mode(0o644));
+        let mode = if engine == crate::engine::Engine::TrickyStore {
+            0o644
+        } else {
+            0o600
+        };
+        let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode));
     }
 
     info!("device keybox generated and installed");
@@ -35,18 +38,18 @@ fn generate() -> Result<String> {
     let mut params = CertificateParams::default();
     params.alg = &PKCS_ECDSA_P256_SHA256;
     params.distinguished_name = DistinguishedName::new();
-    params.distinguished_name.push(DnType::CommonName, "Android Keybox");
+    params
+        .distinguished_name
+        .push(DnType::CommonName, "Android Keybox");
 
-    let cert = Certificate::from_params(params)
-        .context("EC cert generation failed")?;
+    let cert = Certificate::from_params(params).context("EC cert generation failed")?;
     let ec_pem = cert.serialize_private_key_pem();
-    let cert_pem = cert.serialize_pem()
-        .context("cert serialization failed")?;
+    let cert_pem = cert.serialize_pem().context("cert serialization failed")?;
 
     let mut rng = rand::rngs::OsRng;
-    let rsa_key = RsaPrivateKey::new(&mut rng, 2048)
-        .context("RSA 2048 keygen failed")?;
-    let rsa_pem = rsa_key.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
+    let rsa_key = RsaPrivateKey::new(&mut rng, 2048).context("RSA 2048 keygen failed")?;
+    let rsa_pem = rsa_key
+        .to_pkcs8_pem(rsa::pkcs8::LineEnding::LF)
         .context("RSA PEM encoding failed")?;
 
     Ok(build_xml(&ec_pem, &cert_pem, rsa_pem.as_ref()))
