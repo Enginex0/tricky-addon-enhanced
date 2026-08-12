@@ -69,7 +69,7 @@ pub fn cleanup_dead_apps() -> anyhow::Result<u32> {
     let mut removed = 0u32;
 
     for pkg in &target_list {
-        if installed.contains(pkg) || app_data_exists(pkg) {
+        if pkg.starts_with("uid:") || installed.contains(pkg) || app_data_exists(pkg) {
             continue;
         }
         if target::remove_package(pkg)? {
