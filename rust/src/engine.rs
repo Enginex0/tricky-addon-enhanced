@@ -155,7 +155,7 @@ fn normalize_targets(entries: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn write_target_mirror(entries: &[String]) -> Result<()> {
+pub(crate) fn write_target_mirror(entries: &[String]) -> Result<()> {
     let mut content = entries.join("\n");
     if !content.is_empty() {
         content.push('\n');
@@ -458,16 +458,7 @@ fn validate_teesim_config(config: &Value) -> Result<()> {
 }
 
 fn package_uids() -> HashMap<String, u32> {
-    let Ok(content) = std::fs::read_to_string("/data/system/packages.list") else {
-        return HashMap::new();
-    };
-    content
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            Some((fields.next()?.to_owned(), fields.next()?.parse().ok()?))
-        })
-        .collect()
+    crate::platform::packages::list_with_uids().unwrap_or_default()
 }
 
 fn effective_uid(entry: &str, packages: &HashMap<String, u32>) -> Option<u32> {

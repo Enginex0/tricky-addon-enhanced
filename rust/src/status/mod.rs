@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -90,23 +90,26 @@ pub fn count_active_apps() -> u32 {
         Ok(targets) => targets,
         Err(_) => return 0,
     };
-
-    let target_pkgs: HashSet<&str> = targets
-        .iter()
-        .map(String::as_str)
-        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with('!'))
-        .collect();
-
-    if target_pkgs.is_empty() {
-        return 0;
-    }
-
-    let installed = match packages::list_all() {
-        Ok(set) => set,
+    let installed = match packages::list_with_uids() {
+        Ok(installed) => installed,
         Err(_) => return 0,
     };
+    count_installed_targets(&targets, &installed)
+}
 
-    target_pkgs.iter().filter(|pkg| installed.contains(**pkg)).count() as u32
+fn count_installed_targets(targets: &[String], installed: &HashMap<String, u32>) -> u32 {
+    targets
+        .iter()
+        .filter(|target| {
+            target
+                .strip_prefix("uid:")
+                .and_then(|uid| uid.parse::<u32>().ok())
+                .map_or_else(
+                    || installed.contains_key(target.as_str()),
+                    |uid| installed.values().any(|installed_uid| *installed_uid == uid),
+                )
+        })
+        .count() as u32
 }
 
 pub fn get_keybox_label(cfg: &Config) -> &'static str {
@@ -288,4 +291,24 @@ fn read_module_prop_desc() -> Option<String> {
         .lines()
         .find(|l| l.starts_with("description="))
         .map(|l| l.trim_start_matches("description=").to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_package_and_uid_targets() {
+        let targets = vec![
+            "com.example.one".to_owned(),
+            "uid:10002".to_owned(),
+            "uid:10003".to_owned(),
+        ];
+        let installed = HashMap::from([
+            ("com.example.one".to_owned(), 10001),
+            ("com.example.two".to_owned(), 10002),
+        ]);
+
+        assert_eq!(count_installed_targets(&targets, &installed), 2);
+    }
 }

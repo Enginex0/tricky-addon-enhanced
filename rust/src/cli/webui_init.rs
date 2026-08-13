@@ -223,7 +223,7 @@ pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
     let has_jingmatrix = ts_prop.contains("JingMatrix");
     let ts_fork_supported =
         teesim_v4 || has_james || has_beakthoven || has_jingmatrix || ts_ver >= 158;
-    let ts_james_fork = has_james && !has_beakthoven;
+    let ts_james_fork = !teesim_v4 && has_james && !has_beakthoven;
 
     let magisk_available = std::process::Command::new("sh")
         .args(["-c", "command -v magisk"])

@@ -2,7 +2,6 @@ use crate::platform::fs::atomic_write;
 use std::path::Path;
 
 pub(crate) const AUTO_ADDED: &str = "/data/adb/tricky_store/.automation/auto_added.txt";
-const TARGET_FILE: &str = "/data/adb/tricky_store/target.txt";
 
 pub fn read_target() -> anyhow::Result<Vec<String>> {
     Ok(crate::engine::read_targets()?
@@ -13,7 +12,7 @@ pub fn read_target() -> anyhow::Result<Vec<String>> {
 
 pub fn read_target_raw() -> anyhow::Result<Vec<String>> {
     if crate::engine::Engine::detect() == crate::engine::Engine::TrickyStore {
-        let path = Path::new(TARGET_FILE);
+        let path = Path::new(crate::engine::TARGET_MIRROR);
         if !path.exists() {
             return Ok(Vec::new());
         }
@@ -28,11 +27,7 @@ pub fn read_target_raw() -> anyhow::Result<Vec<String>> {
 
 pub fn write_target(entries: &[String]) -> anyhow::Result<()> {
     if crate::engine::Engine::detect() == crate::engine::Engine::TrickyStore {
-        let mut content = entries.join("\n");
-        if !content.is_empty() {
-            content.push('\n');
-        }
-        return atomic_write(Path::new(TARGET_FILE), content.as_bytes());
+        return crate::engine::write_target_mirror(entries);
     }
     crate::engine::write_targets(entries)
 }
