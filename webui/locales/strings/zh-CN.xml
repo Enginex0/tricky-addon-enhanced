@@ -149,7 +149,7 @@
     <string name="automation_fetch_key">获取密钥</string>
     <string name="automation_teesim_profile_header">TEESimulator 配置文件</string>
     <string name="automation_teesim_profile_select">TEESimulator 配置文件</string>
-    <string name="automation_teesim_profile_apply">设置配置</string>
+    <string name="automation_teesim_profile_apply">应用配置文件</string>
     <string name="automation_patch_header">安全补丁自动更新</string>
     <string name="automation_set_patch">设置补丁</string>
     <string name="automation_region_header">区域属性</string>
