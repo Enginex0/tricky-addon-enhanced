@@ -147,6 +147,9 @@
     <string name="automation_interval_set">Ustaw</string>
     <string name="automation_manual_header">Ręczne akcje</string>
     <string name="automation_fetch_key">Pobierz klucz</string>
+    <string name="automation_teesim_profile_header">Profil TEESimulator</string>
+    <string name="automation_teesim_profile_select">Profil TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Ustaw profil</string>
     <string name="automation_patch_header">Automatyczna aktualizacja łatki bezpieczeństwa</string>
     <string name="automation_set_patch">Ustaw łatkę</string>
     <string name="automation_region_header">Props regionu</string>

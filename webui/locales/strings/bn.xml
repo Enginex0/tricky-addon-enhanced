@@ -143,6 +143,9 @@
     <string name="automation_interval_set">সেট করুন</string>
     <string name="automation_manual_header">ম্যানুয়াল কার্যক্রম</string>
     <string name="automation_fetch_key">কী সংগ্রহ করুন</string>
+    <string name="automation_teesim_profile_header">TEESimulator প্রোফাইল</string>
+    <string name="automation_teesim_profile_select">TEESimulator প্রোফাইল</string>
+    <string name="automation_teesim_profile_apply">প্রোফাইল সেট করুন</string>
     <string name="automation_patch_header">নিরাপত্তা প্যাচ স্বয়ংক্রিয় আপডেট</string>
     <string name="automation_set_patch">প্যাচ সেট করুন</string>
     <string name="automation_region_header">রিজিয়ন প্রপস</string>

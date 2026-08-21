@@ -33,6 +33,9 @@ RP="/data/adb/tricky_store/ta-enhanced/bin/resetprop-rs"
 TS="/data/adb/modules/tricky_store"
 TS_DIR="/data/adb/tricky_store"
 
+# TEESimulator v4 owns /data/adb/teesim and its own WebUI.
+. "$MODDIR/common/detect_engine.sh"
+
 # Unified log directory -- shell and Rust daemon both log here
 LOG_BASE_DIR="/data/adb/tricky_store/ta-enhanced/logs"
 mkdir -p "$LOG_BASE_DIR" 2>/dev/null || true
@@ -157,4 +160,3 @@ ensure_prop() {
         _log "ERROR" "Failed to ensure: $name"
     fi
 }
-

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 const PACKAGES_LIST: &str = "/data/system/packages.list";
@@ -20,14 +20,21 @@ pub fn list_third_party() -> anyhow::Result<HashSet<String>> {
 }
 
 pub fn list_all() -> anyhow::Result<HashSet<String>> {
+    Ok(list_with_uids()?.into_keys().collect())
+}
+
+pub fn list_with_uids() -> anyhow::Result<HashMap<String, u32>> {
     let content = std::fs::read_to_string(PACKAGES_LIST)?;
     Ok(parse_packages_list(&content))
 }
 
-fn parse_packages_list(content: &str) -> HashSet<String> {
+fn parse_packages_list(content: &str) -> HashMap<String, u32> {
     content
         .lines()
-        .filter_map(|line| line.split_whitespace().next().map(str::to_string))
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?.to_owned(), fields.next()?.parse().ok()?))
+        })
         .collect()
 }
 

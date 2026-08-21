@@ -143,6 +143,9 @@
     <string name="automation_interval_set">Festlegen</string>
     <string name="automation_manual_header">Manuelle Aktionen</string>
     <string name="automation_fetch_key">Schlüssel abrufen</string>
+    <string name="automation_teesim_profile_header">TEESimulator-Profil</string>
+    <string name="automation_teesim_profile_select">TEESimulator-Profil</string>
+    <string name="automation_teesim_profile_apply">Profil anwenden</string>
     <string name="automation_patch_header">Sicherheitspatch automatisch aktualisieren</string>
     <string name="automation_set_patch">Patch festlegen</string>
     <string name="automation_region_header">Region-Props</string>

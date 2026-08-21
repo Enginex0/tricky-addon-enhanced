@@ -28,7 +28,9 @@ pub fn dispatch(command: Commands, cfg: &Config) -> anyhow::Result<()> {
         Commands::DaemonStop => crate::daemon::handle_daemon_stop(),
         Commands::Config { action } => crate::config::handle_config(action, cfg),
         Commands::Keybox { action } => crate::keybox::handle_keybox(action, cfg),
-        Commands::SecurityPatch { action } => crate::security_patch::handle_security_patch(action, cfg),
+        Commands::SecurityPatch { action } => {
+            crate::security_patch::handle_security_patch(action, cfg)
+        }
         Commands::Conflict { action } => crate::conflict::handle_conflict(action, cfg),
         Commands::Vbhash { action } => crate::vbhash::handle_vbhash(action, cfg),
         Commands::Health { action } => crate::health::handle_health(action, cfg),

@@ -3,7 +3,6 @@ use std::path::Path;
 use crate::config::Config;
 use crate::platform::network::wait_for_network;
 
-const TS_DIR: &str = "/data/adb/tricky_store";
 const DATA_DIR: &str = "/data/adb/tricky_store/ta-enhanced";
 
 pub struct TaskBackoff(pub u32);
@@ -98,8 +97,8 @@ impl DaemonTask for AutomationTask {
         if pending.exists() {
             match std::fs::read_to_string(&pending) {
                 Ok(content) => {
-                    let target = Path::new(TS_DIR).join("target.txt");
-                    if let Err(e) = crate::platform::fs::atomic_write(&target, content.as_bytes()) {
+                    let entries: Vec<String> = content.lines().map(str::to_owned).collect();
+                    if let Err(e) = crate::automation::target::write_target(&entries) {
                         tracing::warn!("applist.pending apply failed: {e}");
                     } else {
                         let _ = std::fs::remove_file(&pending);
@@ -180,7 +179,11 @@ impl DaemonTask for KeyboxTask {
     fn run(&mut self, config: &Config, _manager: Option<&str>) -> Result<(), TaskBackoff> {
         if !self.boot_done {
             if !wait_for_network(7) {
-                if Path::new("/data/adb/tricky_store/keybox.xml").exists() {
+                if crate::engine::Engine::detect()
+                    .keybox_path()
+                    .map(|path| path.exists())
+                    .unwrap_or(false)
+                {
                     tracing::info!("no network at boot, keeping existing keybox");
                     self.boot_done = true;
                     return Ok(());
@@ -272,4 +275,3 @@ impl DaemonTask for SecurityPatchTask {
         Ok(())
     }
 }
-

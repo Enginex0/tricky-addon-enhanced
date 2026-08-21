@@ -143,6 +143,9 @@
     <string name="automation_interval_set">Imposta</string>
     <string name="automation_manual_header">Azioni manuali</string>
     <string name="automation_fetch_key">Recupera chiave</string>
+    <string name="automation_teesim_profile_header">Profilo TEESimulator</string>
+    <string name="automation_teesim_profile_select">Profilo TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Imposta profilo</string>
     <string name="automation_patch_header">Aggiornamento automatico patch di sicurezza</string>
     <string name="automation_set_patch">Imposta patch</string>
     <string name="automation_region_header">Props regionali</string>

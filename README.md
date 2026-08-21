@@ -130,7 +130,7 @@ A single native daemon manages all background tasks — if anything dies, it res
 | **APatch** | 11159+ | Built-in |
 | **Magisk** | 20.4+ | [KSUWebUIStandalone](https://github.com/5ec1cff/KSUWebUIStandalone) or [WebUI-X](https://github.com/5ec1cff/WebUI-X) required |
 
-**Requires:** [TEESimulator](https://github.com/JingMatrix/TEESimulator) or [TrickyStore](https://github.com/5ec1cff/TrickyStore) installed as the attestation engine.
+**Requires:** [TEESimulator v4](https://github.com/JingMatrix/TEESimulator) or [TrickyStore](https://github.com/5ec1cff/TrickyStore) as the attestation engine.
 
 ---
 
@@ -144,7 +144,15 @@ During install, press **Vol−** for manual target mode (GMS/GSF only) or **Vol+
 
 Conflicting modules are detected and `rm -rf`'d at install time, so an old TA fork or competing keybox/VBHash module is removed automatically.
 
-The module captures VBHash, builds the exclude list, generates `target.txt`, fetches a valid keybox, sets security patch dates, and starts the daemon. Nothing else to do.
+The module captures VBHash, configures protected apps, manages the keybox and patch levels, and starts the daemon. With TEESimulator v4, changes are applied only to the selected native profile.
+
+TEESimulator and Tricky Addon Enhanced keep separate WebUIs.
+
+One TEESimulator profile is selected automatically. With multiple profiles, choose one under **Tricky Addon Enhanced → Automation Settings → TEESimulator Profile**, or run:
+
+```sh
+ta-enhanced automation select-profile PROFILE_NAME
+```
 
 ---
 
@@ -183,7 +191,7 @@ ta-enhanced config get keybox.source
 ta-enhanced config set keybox.interval 3600
 ```
 
-Config lives at `/data/adb/tricky_store/config.toml` and is preserved across reinstalls.
+Addon config lives at `/data/adb/tricky_store/ta-enhanced/config.toml` and is preserved across reinstalls.
 
 <details>
 <summary><b>Config Reference</b></summary>
@@ -195,7 +203,7 @@ Config lives at `/data/adb/tricky_store/config.toml` and is preserved across rei
 | `keybox.interval` | `300` | Seconds between fetch attempts |
 | `security_patch.auto_update` | `true` | Auto patch date updates |
 | `security_patch.interval` | `86400` | Seconds between patch checks |
-| `automation.enabled` | `true` | Auto target.txt population |
+| `automation.enabled` | `true` | Auto-populate TrickyStore targets or TEESimulator profile apps |
 | `automation.use_inotify` | `true` | Use inotify for instant app detection |
 | `health.enabled` | `true` | Attestation engine health monitor |
 | `health.interval` | `10` | Seconds between health checks |
@@ -208,13 +216,18 @@ Config lives at `/data/adb/tricky_store/config.toml` and is preserved across rei
 <summary><b>File Locations</b></summary>
 
 ```
+/data/adb/teesim/              # TEESimulator-owned files
+├── config.json               # Profiles, apps, and patch levels
+└── *.xml                     # Profile keyboxes
+
 /data/adb/tricky_store/
-├── config.toml                # Module configuration
-├── target.txt                 # Apps to protect
-├── keybox.xml                 # Current keybox
-├── keybox.xml.bak             # Keybox backup
-├── security_patch.txt         # Patch dates
+├── target.txt                 # TrickyStore target list / TEESimulator UI mirror
+├── keybox.xml                 # TrickyStore current keybox
+├── keybox.xml.bak             # TrickyStore keybox backup
+├── security_patch.txt         # TrickyStore patch dates
 ├── .health_state              # Health monitor state
+└── ta-enhanced/
+    └── config.toml            # Addon configuration
 
 /data/adb/Tricky-addon-enhanced/logs/
 ├── daemon.log                 # Unified daemon log

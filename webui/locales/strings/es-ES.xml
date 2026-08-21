@@ -147,6 +147,9 @@
     <string name="automation_interval_set">Establecer</string>
     <string name="automation_manual_header">Acciones manuales</string>
     <string name="automation_fetch_key">Obtener clave</string>
+    <string name="automation_teesim_profile_header">Perfil de TEESimulator</string>
+    <string name="automation_teesim_profile_select">Perfil de TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Aplicar perfil</string>
     <string name="automation_patch_header">Actualización automática del parche de seguridad</string>
     <string name="automation_set_patch">Establecer parche</string>
     <string name="automation_region_header">Props de región</string>

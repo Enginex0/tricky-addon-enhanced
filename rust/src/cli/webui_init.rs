@@ -1,12 +1,8 @@
-use serde::Serialize;
-use std::path::Path;
 use crate::config::Config;
+use serde::Serialize;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const KEYBOX_PATH: &str = "/data/adb/tricky_store/keybox.xml";
-const TARGET_PATH: &str = "/data/adb/tricky_store/target.txt";
 const BOOT_HASH_PATH: &str = "/data/adb/boot_hash";
-const SP_PATH: &str = "/data/adb/tricky_store/security_patch.txt";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,32 +101,21 @@ fn read_module_prop(key: &str) -> Option<String> {
 }
 
 fn count_target_entries() -> u32 {
-    std::fs::read_to_string(TARGET_PATH)
-        .map(|c| c.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count() as u32)
+    crate::engine::read_targets()
+        .map(|targets| targets.len() as u32)
         .unwrap_or(0)
 }
 
 fn read_patch_dates() -> (String, String, String) {
-    let Ok(content) = std::fs::read_to_string(SP_PATH) else {
-        return (String::new(), String::new(), String::new());
-    };
-    let mut system = String::new();
-    let mut boot = String::new();
-    let mut vendor = String::new();
-    for line in content.lines() {
-        if let Some(val) = line.strip_prefix("system=") {
-            system = val.trim().into();
-        } else if let Some(val) = line.strip_prefix("boot=") {
-            boot = val.trim().into();
-        } else if let Some(val) = line.strip_prefix("vendor=") {
-            vendor = val.trim().into();
-        }
-    }
-    (system, boot, vendor)
+    crate::engine::read_patch_dates().unwrap_or_default()
 }
 
 fn check_keybox() -> (bool, String, Vec<String>) {
-    let path = Path::new(KEYBOX_PATH);
+    let keybox = match crate::engine::Engine::detect().keybox_path() {
+        Ok(path) => path,
+        Err(error) => return (false, "none".into(), vec![error.to_string()]),
+    };
+    let path = keybox.as_path();
     if !path.exists() {
         return (false, "none".into(), vec!["keybox.xml not found".into()]);
     }
@@ -167,27 +152,51 @@ fn detect_aosp_device() -> bool {
 
 fn build_conflicts(cfg: &Config) -> ConflictReport {
     if !cfg.conflict.enabled {
-        return ConflictReport { modules: Vec::new(), apps: Vec::new() };
+        return ConflictReport {
+            modules: Vec::new(),
+            apps: Vec::new(),
+        };
     }
     let status = match crate::conflict::check_all(false) {
         Ok(s) => s,
-        Err(_) => return ConflictReport { modules: Vec::new(), apps: Vec::new() },
+        Err(_) => {
+            return ConflictReport {
+                modules: Vec::new(),
+                apps: Vec::new(),
+            }
+        }
     };
 
-    let mut modules: Vec<ConflictModule> = status.aggressive_conflicts.iter()
-        .map(|id| ConflictModule { id: id.clone(), name: id.clone(), reason: "aggressive".into() })
+    let mut modules: Vec<ConflictModule> = status
+        .aggressive_conflicts
+        .iter()
+        .map(|id| ConflictModule {
+            id: id.clone(),
+            name: id.clone(),
+            reason: "aggressive".into(),
+        })
         .collect();
-    modules.extend(status.regular_conflicts.iter()
-        .map(|id| ConflictModule { id: id.clone(), name: id.clone(), reason: "regular".into() }));
+    modules.extend(status.regular_conflicts.iter().map(|id| ConflictModule {
+        id: id.clone(),
+        name: id.clone(),
+        reason: "regular".into(),
+    }));
 
-    let apps: Vec<ConflictApp> = status.app_conflicts.iter()
-        .map(|pkg| ConflictApp { package_name: pkg.clone(), name: pkg.clone(), reason: "conflicting app".into() })
+    let apps: Vec<ConflictApp> = status
+        .app_conflicts
+        .iter()
+        .map(|pkg| ConflictApp {
+            package_name: pkg.clone(),
+            name: pkg.clone(),
+            reason: "conflicting app".into(),
+        })
         .collect();
 
     ConflictReport { modules, apps }
 }
 
 pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
+    let teesim_v4 = crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4;
     let engine = crate::health::detect_engine();
     let engine_running = crate::health::is_engine_enabled();
     let total = count_target_entries();
@@ -198,20 +207,23 @@ pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
         .map(|h| h.trim().len() == 64 && h.trim().chars().all(|c| c.is_ascii_hexdigit()))
         .unwrap_or(false);
 
-    let restart_count = crate::health::read_state()
-        .map(|s| s.restarts).unwrap_or(0);
+    let restart_count = crate::health::read_state().map(|s| s.restarts).unwrap_or(0);
 
-    let ts_prop = std::fs::read_to_string("/data/adb/modules/tricky_store/module.prop")
+    let ts_prop = crate::engine::Engine::detect()
+        .module_dir()
+        .and_then(|path| std::fs::read_to_string(path.join("module.prop")).ok())
         .unwrap_or_default();
-    let ts_ver: u32 = ts_prop.lines()
+    let ts_ver: u32 = ts_prop
+        .lines()
         .find(|l| l.starts_with("versionCode="))
         .and_then(|l| l.split_once('=')?.1.trim().parse().ok())
         .unwrap_or(0);
     let has_james = ts_prop.contains("James");
     let has_beakthoven = ts_prop.contains("beakthoven");
     let has_jingmatrix = ts_prop.contains("JingMatrix");
-    let ts_fork_supported = has_james || has_beakthoven || has_jingmatrix || ts_ver >= 158;
-    let ts_james_fork = has_james && !has_beakthoven;
+    let ts_fork_supported =
+        teesim_v4 || has_james || has_beakthoven || has_jingmatrix || ts_ver >= 158;
+    let ts_james_fork = !teesim_v4 && has_james && !has_beakthoven;
 
     let magisk_available = std::process::Command::new("sh")
         .args(["-c", "command -v magisk"])
@@ -224,7 +236,9 @@ pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
             id: read_module_prop("id").unwrap_or_else(|| "TA_enhanced".into()),
             name: read_module_prop("name").unwrap_or_else(|| "Tricky Addon Enhanced".into()),
             version: read_module_prop("version").unwrap_or_else(|| format!("v{VERSION}")),
-            version_code: read_module_prop("versionCode").and_then(|v| v.parse().ok()).unwrap_or(0),
+            version_code: read_module_prop("versionCode")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
             author: read_module_prop("author").unwrap_or_else(|| "KOWX712, Enginex0".into()),
         },
         config: cfg.clone(),
@@ -232,7 +246,11 @@ pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
             engine_running,
             active_apps: total,
             total_targeted: total,
-            keybox_label: if kb_valid { cfg.keybox.source.clone() } else { "none".into() },
+            keybox_label: if kb_valid {
+                cfg.keybox.source.clone()
+            } else {
+                "none".into()
+            },
             patch_level: system.clone(),
             vbhash_active,
             engine,
@@ -245,7 +263,11 @@ pub fn handle_webui_init(cfg: &Config) -> anyhow::Result<()> {
         conflicts: build_conflicts(cfg),
         keybox: KeyboxInfo {
             valid: kb_valid,
-            source: if kb_valid { cfg.keybox.source.clone() } else { "none".into() },
+            source: if kb_valid {
+                cfg.keybox.source.clone()
+            } else {
+                "none".into()
+            },
             root_type: kb_root_type,
             last_fetch: None,
             validation_errors: kb_errors,

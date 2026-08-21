@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -11,7 +11,6 @@ use crate::platform::packages;
 const TS_MODULE_PROP: &str = "/data/adb/modules/tricky_store/module.prop";
 const TS_MODULE_PROP_HIDDEN: &str = "/data/adb/modules/.tricky_store/module.prop";
 const ORIGINAL_DESC_FILE: &str = "/data/adb/tricky_store/ta-enhanced/description.bak";
-const TARGET_FILE: &str = "/data/adb/tricky_store/target.txt";
 const BOOT_HASH_FILE: &str = "/data/adb/boot_hash";
 const SECURITY_PATCH_FILE: &str = "/data/adb/tricky_store/security_patch.txt";
 
@@ -87,27 +86,30 @@ pub fn build_description(cfg: &Config) -> String {
 }
 
 pub fn count_active_apps() -> u32 {
-    let targets = match std::fs::read_to_string(TARGET_FILE) {
-        Ok(c) => c,
+    let targets = match crate::engine::read_targets() {
+        Ok(targets) => targets,
         Err(_) => return 0,
     };
-
-    let target_pkgs: HashSet<&str> = targets
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with('!'))
-        .collect();
-
-    if target_pkgs.is_empty() {
-        return 0;
-    }
-
-    let installed = match packages::list_all() {
-        Ok(set) => set,
+    let installed = match packages::list_with_uids() {
+        Ok(installed) => installed,
         Err(_) => return 0,
     };
+    count_installed_targets(&targets, &installed)
+}
 
-    target_pkgs.iter().filter(|pkg| installed.contains(**pkg)).count() as u32
+fn count_installed_targets(targets: &[String], installed: &HashMap<String, u32>) -> u32 {
+    targets
+        .iter()
+        .filter(|target| {
+            target
+                .strip_prefix("uid:")
+                .and_then(|uid| uid.parse::<u32>().ok())
+                .map_or_else(
+                    || installed.contains_key(target.as_str()),
+                    |uid| installed.values().any(|installed_uid| *installed_uid == uid),
+                )
+        })
+        .count() as u32
 }
 
 pub fn get_keybox_label(cfg: &Config) -> &'static str {
@@ -120,6 +122,12 @@ pub fn get_keybox_label(cfg: &Config) -> &'static str {
 }
 
 pub fn get_patch_level() -> String {
+    if let Ok((system, boot, _)) = crate::engine::read_patch_dates() {
+        let value = if boot.is_empty() { system } else { boot };
+        if !value.is_empty() {
+            return value;
+        }
+    }
     if let Ok(content) = std::fs::read_to_string(SECURITY_PATCH_FILE) {
         for line in content.lines() {
             if let Some(val) = line.strip_prefix("boot=") {
@@ -144,7 +152,7 @@ pub fn get_vbhash_active() -> bool {
 }
 
 pub fn save_original_description() -> Result<()> {
-    let desc_path = Path::new(ORIGINAL_DESC_FILE);
+    let desc_path = original_description_path();
     if desc_path.exists() {
         return Ok(());
     }
@@ -153,21 +161,29 @@ pub fn save_original_description() -> Result<()> {
         if let Some(parent) = desc_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(desc_path, desc.as_bytes())
+        std::fs::write(&desc_path, desc.as_bytes())
             .context("failed to save original description")?;
     }
     Ok(())
 }
 
 pub fn restore_original_description() -> Result<()> {
-    let desc_path = Path::new(ORIGINAL_DESC_FILE);
+    let desc_path = original_description_path();
     if !desc_path.exists() {
         return Ok(());
     }
-    let original = std::fs::read_to_string(desc_path)
+    let original = std::fs::read_to_string(&desc_path)
         .context("failed to read original description")?;
     update_prop_description(&original)?;
     Ok(())
+}
+
+fn original_description_path() -> std::path::PathBuf {
+    if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        std::path::PathBuf::from("/data/adb/tricky_store/ta-enhanced/addon-description.bak")
+    } else {
+        std::path::PathBuf::from(ORIGINAL_DESC_FILE)
+    }
 }
 
 pub fn update_prop_description(desc: &str) -> Result<()> {
@@ -215,14 +231,17 @@ fn push_live_description(desc: &str) {
         .unwrap_or("ksud");
 
     // ksud requires --internal <module-id>; the KSU_MODULE env var is ignored.
-    // Target tricky_store: that is the visible module the user sees once
-    // TA_enhanced's module.prop is removed in service.sh.
+    let module_id = if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        "TA_enhanced"
+    } else {
+        "tricky_store"
+    };
     let _ = Command::new(ksud)
         .args([
             "module",
             "config",
             "--internal",
-            "tricky_store",
+            module_id,
             "set",
             "override.description",
             desc,
@@ -251,7 +270,15 @@ pub fn scan_xposed() -> Result<Vec<String>> {
 }
 
 fn find_module_prop() -> Option<String> {
-    [TS_MODULE_PROP, TS_MODULE_PROP_HIDDEN]
+    let candidates: &[&str] = if crate::engine::Engine::detect() == crate::engine::Engine::TeeSimulatorV4 {
+        &[
+            "/data/adb/modules/.TA_enhanced/module.prop",
+            "/data/adb/modules/TA_enhanced/module.prop",
+        ]
+    } else {
+        &[TS_MODULE_PROP, TS_MODULE_PROP_HIDDEN]
+    };
+    candidates
         .iter()
         .find(|p| Path::new(p).exists())
         .map(|p| p.to_string())
@@ -264,4 +291,24 @@ fn read_module_prop_desc() -> Option<String> {
         .lines()
         .find(|l| l.starts_with("description="))
         .map(|l| l.trim_start_matches("description=").to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_package_and_uid_targets() {
+        let targets = vec![
+            "com.example.one".to_owned(),
+            "uid:10002".to_owned(),
+            "uid:10003".to_owned(),
+        ];
+        let installed = HashMap::from([
+            ("com.example.one".to_owned(), 10001),
+            ("com.example.two".to_owned(), 10002),
+        ]);
+
+        assert_eq!(count_installed_targets(&targets, &installed), 2);
+    }
 }

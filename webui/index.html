@@ -119,11 +119,9 @@
         </div>
     </div>
 
-    <!-- Bundled JS hard-references #save and .floating-btn at module init.
-         Autosave is the only save path; the FAB stays in the DOM as a stub so
-         the bundle's references resolve, but is locked invisible and inert. -->
-    <md-fab id="save" class="floating-btn hide" label="Save"
-            style="display:none!important;pointer-events:none" aria-hidden="true">
+    <!-- Bundled JS owns explicit Save. The execution wrapper waits for the
+         TEESimulator synchronization before delivering the Save callback. -->
+    <md-fab id="save" class="floating-btn hide" label="Save">
         <md-icon slot="icon">edit_note</md-icon>
     </md-fab>
 
@@ -142,6 +140,7 @@
         <span hidden data-i18n="prompt_save_error" id="i18n-prompt-save-error"></span>
         <span hidden data-i18n="prompt_flag_failed" id="i18n-prompt-flag-failed"></span>
         <span hidden data-i18n="prompt_reboot_required" id="i18n-prompt-reboot-required"></span>
+        <span hidden data-i18n="automation_teesim_profile_select" id="i18n-teesim-profile-select"></span>
     </div>
 
     <!-- Applist Display -->
@@ -457,6 +456,17 @@
                     </div>
                 </div>
 
+                <div class="setting-section" id="teesim-profile-section" hidden>
+                    <div class="setting-header" data-i18n="automation_teesim_profile_header">TEESimulator profile</div>
+                    <div class="setting-row">
+                        <select class="setting-select" id="teesim-profile-select" aria-label="TEESimulator profile" label="TEESimulator profile" data-i18n="automation_teesim_profile_select"></select>
+                        <md-filled-button id="teesim-profile-apply">
+                            <span data-i18n="automation_teesim_profile_apply">Set profile</span>
+                        </md-filled-button>
+                    </div>
+                    <div id="teesim-profile-hint" style="font-size:12px;opacity:0.7"></div>
+                </div>
+
                 <div class="setting-section">
                     <div class="setting-header" data-i18n="automation_patch_header">Security Patch Auto-Update</div>
                     <div class="setting-row">
@@ -558,6 +568,120 @@
             try { ksu.exec(cmd, '{}', cb); }
             catch (e) { delete window[cb]; resolve({ errno: 1, stdout: '', stderr: String(e) }); }
         });
+        const addonBinaryCommand = (args) => `p=TA_enhanced; [ -d /data/adb/modules/.TA_enhanced ] && p=.TA_enhanced; case $(uname -m) in aarch64) arch=arm64-v8a;; armv7*|armv8l) arch=armeabi-v7a;; x86_64) arch=x86_64;; i?86) arch=x86;; *) exit 1;; esac; /data/adb/modules/$p/bin/$arch/ta-enhanced ${args}`;
+        const teeCheck = "{ test -d /data/adb/modules/teesim && test ! -f /data/adb/modules/teesim/remove && grep -q '^id=teesim$' /data/adb/modules/teesim/module.prop; } || { test -d /data/adb/modules_update/teesim && test ! -f /data/adb/modules_update/teesim/remove && grep -q '^id=teesim$' /data/adb/modules_update/teesim/module.prop; }";
+        const teeActiveCheck = "{ test -d /data/adb/modules/teesim && test ! -f /data/adb/modules/teesim/remove && test ! -f /data/adb/modules/teesim/disable && grep -q '^id=teesim$' /data/adb/modules/teesim/module.prop; } || { test -d /data/adb/modules_update/teesim && test ! -f /data/adb/modules_update/teesim/remove && test ! -f /data/adb/modules_update/teesim/disable && grep -q '^id=teesim$' /data/adb/modules_update/teesim/module.prop; }";
+        if (typeof ksu !== 'undefined' && ksu.exec && !ksu.__taEnhancedWrapped) {
+            const originalExec = ksu.exec.bind(ksu);
+            let hookSequence = 0;
+            const runOriginal = (command, callback) => {
+                const callbackName = `__taHook_${Date.now()}_${hookSequence++}`;
+                window[callbackName] = (errno, stdout, stderr) => {
+                    delete window[callbackName];
+                    callback(Number(errno), stdout || '', stderr || '');
+                };
+                originalExec(command, '{}', callbackName);
+            };
+            ksu.exec = (command, options, callbackName) => {
+                const deliver = (errno, stdout, stderr) => {
+                    const callback = window[callbackName];
+                    if (typeof callback === 'function') callback(errno, stdout, stderr);
+                };
+                const isTargetRead = /^\s*cat \/data\/adb\/tricky_store\/target\.txt/.test(command);
+                const isPatchRead = /^\s*cat \/data\/adb\/tricky_store\/security_patch\.txt/.test(command);
+                const isHealthEngineCheck = /modules(?:\/\.?)tricky_store.*disable/.test(command) || (command.includes('/data/adb/modules/tricky_store') && command.includes('disable'));
+                const isEngineNameCheck = command.includes("grep -h '^name=TEESimulator'");
+                const isRestartCountCheck = command.includes('^restarts=') && command.includes('.health_state');
+                const followupFor = () => {
+                    if (command.includes("cat << 'KB_EOF' > /data/adb/tricky_store/keybox.xml")) {
+                        return addonBinaryCommand('keybox set-custom /data/adb/tricky_store/keybox.xml');
+                    }
+                    if (/mv\s+\/data\/adb\/tricky_store\/target\.txt\.tmp\s+\/data\/adb\/tricky_store\/target\.txt(?:\s|$)/.test(command)) {
+                        return addonBinaryCommand('automation sync-target');
+                    }
+                    if (command.includes('/data/adb/tricky_store/security_patch.txt') && !isPatchRead) {
+                        return addonBinaryCommand('security-patch import-legacy');
+                    }
+                    return '';
+                };
+                const execute = () => {
+                    const proxyName = `__taProxy_${Date.now()}_${hookSequence++}`;
+                    window[proxyName] = (errno, stdout, stderr) => {
+                        delete window[proxyName];
+                        const code = Number(errno);
+                        const followup = code === 0 ? followupFor() : '';
+                        if (!followup) {
+                            deliver(code, stdout || '', stderr || '');
+                            return;
+                        }
+                        runOriginal(teeCheck, (teeCode) => {
+                            if (teeCode !== 0) {
+                                deliver(code, stdout || '', stderr || '');
+                                return;
+                            }
+                            runOriginal(followup, (followupCode, followupStdout, followupStderr) => {
+                                deliver(followupCode, stdout || followupStdout, followupStderr || stderr || '');
+                            });
+                        });
+                    };
+                    originalExec(command, options, proxyName);
+                };
+                if (isHealthEngineCheck) {
+                    runOriginal(teeCheck, (teeCode) => {
+                        if (teeCode !== 0) {
+                            execute();
+                            return;
+                        }
+                        runOriginal(teeActiveCheck, (activeCode, stdout, stderr) => {
+                            deliver(activeCode, stdout, stderr);
+                        });
+                    });
+                    return;
+                }
+                if (isEngineNameCheck) {
+                    runOriginal(teeCheck, (teeCode) => {
+                        if (teeCode !== 0) {
+                            execute();
+                            return;
+                        }
+                        const teeNameCmd = "grep -h '^name=' /data/adb/modules/teesim/module.prop /data/adb/modules_update/teesim/module.prop 2>/dev/null | head -1 | cut -d= -f2";
+                        runOriginal(teeNameCmd, (nameCode, stdout, stderr) => {
+                            if (nameCode === 0 && stdout && stdout.trim()) {
+                                deliver(0, stdout, stderr);
+                            } else {
+                                execute();
+                            }
+                        });
+                    });
+                    return;
+                }
+                if (isRestartCountCheck) {
+                    const restartCmd = `grep -o '"restarts"[[:space:]]*:[[:space:]]*[0-9]*' /data/adb/tricky_store/.health_state 2>/dev/null | grep -o '[0-9]*$' || ${command}`;
+                    runOriginal(restartCmd, (resCode, stdout, stderr) => {
+                        deliver(resCode, stdout, stderr);
+                    });
+                    return;
+                }
+                if (!isTargetRead && !isPatchRead) {
+                    execute();
+                    return;
+                }
+                runOriginal(teeCheck, (teeCode) => {
+                    if (teeCode !== 0) {
+                        execute();
+                        return;
+                    }
+                    const exportCommand = isTargetRead
+                        ? addonBinaryCommand('automation export-target')
+                        : addonBinaryCommand('security-patch export-legacy');
+                    runOriginal(exportCommand, (exportCode, stdout, stderr) => {
+                        if (exportCode === 0) execute();
+                        else deliver(exportCode, stdout, stderr);
+                    });
+                });
+            };
+            ksu.__taEnhancedWrapped = true;
+        }
         window.y = (key, isError = false, duration = 1200) => {
             const c = document.querySelector('.prompt-container');
             const p = document.getElementById('prompt');
@@ -584,6 +708,69 @@
             const track = toggle.querySelector('.toggle-track');
             return !!(track && track.classList.contains('active'));
         };
+        const refreshProfiles = async () => {
+            const section = document.getElementById('teesim-profile-section');
+            const select = document.getElementById('teesim-profile-select');
+            const apply = document.getElementById('teesim-profile-apply');
+            const hint = document.getElementById('teesim-profile-hint');
+            if (!section || !select || !apply || !hint) return;
+            const ariaLabel = (document.getElementById('i18n-teesim-profile-select')?.textContent.trim())
+                || select.getAttribute('label')
+                || 'TEESimulator profile';
+            select.setAttribute('aria-label', ariaLabel);
+            const result = await ksuExec(addonBinaryCommand('automation profiles'));
+            if (result.errno !== 0) {
+                section.hidden = false;
+                select.replaceChildren();
+                select.disabled = true;
+                apply.hidden = true;
+                hint.textContent = `TEESimulator config error: ${(result.stderr || result.stdout).trim() || 'unknown error'}`;
+                return;
+            }
+            let status;
+            try { status = JSON.parse(result.stdout); }
+            catch { section.hidden = true; return; }
+            if (!status.available) {
+                section.hidden = true;
+                return;
+            }
+            section.hidden = false;
+            select.replaceChildren();
+            if (!status.automatic) {
+                const pending = document.createElement('option');
+                pending.value = '';
+                pending.textContent = 'No profile selected';
+                select.appendChild(pending);
+            }
+            for (const name of status.profiles) {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            }
+            select.value = status.selected || '';
+            select.disabled = status.automatic;
+            apply.hidden = status.automatic;
+            hint.textContent = status.automatic
+                ? `Using the only profile: ${status.selected}`
+                : status.selected
+                    ? `Managed profile: ${status.selected}`
+                    : 'Select the profile this addon may manage.';
+        };
+        const applyProfile = async () => {
+            const select = document.getElementById('teesim-profile-select');
+            const apply = document.getElementById('teesim-profile-apply');
+            if (!select || !apply) return;
+            apply.disabled = true;
+            const profile = select.value;
+            const set = await ksuExec(addonBinaryCommand(`automation select-profile "${profile}"`));
+            if (set.errno !== 0) {
+                apply.disabled = false;
+                if (typeof window.y === 'function') window.y('Failed to set profile', true, 5000);
+                return;
+            }
+            location.reload();
+        };
         const refreshState = async () => {
             const toggles = document.querySelectorAll('.custom-toggle[data-flag]');
             for (const t of toggles) {
@@ -604,67 +791,6 @@
             setOn(toggle, !currentlyOn);
             if (typeof window.y === 'function') window.y('prompt_reboot_required', false, 5000);
         };
-        const TARGET_TXT = '/data/adb/tricky_store/target.txt';
-        let saveScheduled = false;
-        const flushTargetTxt = async () => {
-            saveScheduled = false;
-            const cards = Array.from(document.querySelectorAll('.card[data-package]'));
-            const visible = new Set();
-            const checkedVisible = new Map();
-            for (const c of cards) {
-                const pkg = c.dataset.package;
-                if (!/^[a-zA-Z0-9._]+$/.test(pkg)) continue;
-                visible.add(pkg);
-                const cb = c.querySelector('md-checkbox');
-                if (cb && cb.checked) {
-                    const mode = c.dataset.mode === 'generate' ? '!'
-                               : c.dataset.mode === 'hack'     ? '?' : '';
-                    checkedVisible.set(pkg, mode);
-                }
-            }
-            const cur = await ksuExec(`cat ${TARGET_TXT} 2>/dev/null`);
-            const preserved = (cur.stdout || '').split('\n')
-                .filter(line => {
-                    const trimmed = line.trim();
-                    if (!trimmed || trimmed.startsWith('#')) return true;
-                    const pkg = trimmed.replace(/[!?]$/, '');
-                    return !visible.has(pkg);
-                });
-            const visibleLines = [];
-            for (const [pkg, mode] of checkedVisible) visibleLines.push(`${pkg}${mode}`);
-            const out = [...preserved, ...visibleLines]
-                .filter(Boolean)
-                .filter((v, i, a) => a.indexOf(v) === i)
-                .join('\n');
-            const heredoc = `cat > ${TARGET_TXT} <<'TGT_EOF'\n${out}\nTGT_EOF`;
-            const r = await ksuExec(heredoc);
-            if (r.errno === 0) {
-                if (typeof window.y === 'function') window.y('prompt_saved_target');
-            } else if (typeof window.y === 'function') {
-                window.y('prompt_save_error', true);
-            }
-        };
-        const scheduleFlush = () => {
-            if (saveScheduled) return;
-            saveScheduled = true;
-            queueMicrotask(flushTargetTxt);
-        };
-        window.scheduleFlush = scheduleFlush;
-        document.addEventListener('change', (ev) => {
-            if (ev.target && ev.target.matches && ev.target.matches('md-checkbox.checkbox')) {
-                scheduleFlush();
-            }
-        }, true);
-        document.addEventListener('click', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('.card[data-package]')) {
-                scheduleFlush();
-            }
-        }, true);
-        ['select-all', 'deselect-all', 'select-denylist', 'deselect-unnecessary']
-            .forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('click', () => setTimeout(scheduleFlush, 0));
-            });
         const renderKeyboxBadge = () => {
             const badge = document.getElementById('keybox-badge');
             if (!badge) return false;
@@ -709,10 +835,17 @@
                 t.addEventListener('click', onToggleClick);
             });
             refreshState();
+            refreshProfiles();
+            document.getElementById('teesim-profile-apply')?.addEventListener('click', applyProfile);
             watchKeyboxBadge();
             const dlg = document.getElementById('automation-settings-dialog');
             if (dlg) {
-                new MutationObserver(() => { if (dlg.hasAttribute('open')) refreshState(); })
+                new MutationObserver(() => {
+                    if (dlg.hasAttribute('open')) {
+                        refreshState();
+                        refreshProfiles();
+                    }
+                })
                     .observe(dlg, { attributes: true, attributeFilter: ['open'] });
             }
         };

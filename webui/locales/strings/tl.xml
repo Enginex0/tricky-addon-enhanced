@@ -142,6 +142,9 @@
     <string name="automation_interval_set">I-set</string>
     <string name="automation_manual_header">Manu-manong Aksyon</string>
     <string name="automation_fetch_key">Kunin ang Key</string>
+    <string name="automation_teesim_profile_header">Profile ng TEESimulator</string>
+    <string name="automation_teesim_profile_select">Profile ng TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Itakda ang profile</string>
     <string name="automation_patch_header">Auto-Update ng Security Patch</string>
     <string name="automation_set_patch">I-set ang Patch</string>
     <string name="automation_region_header">Region Props</string>

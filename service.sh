@@ -35,6 +35,9 @@ add_denylist_to_target() {
     done
 
     mv "$tmp_file" "$target_file"
+    if [ "$ENGINE" = "teesim" ] && "$BIN" automation profile-ready >/dev/null 2>&1; then
+        "$BIN" automation sync-target >/dev/null 2>&1
+    fi
 }
 
 # Security patch is handled by the daemon's SecurityPatchTask (with retries + bulletin fetch).
@@ -57,7 +60,22 @@ fi
 # Dot-prefix hides from Magisk's module list scan (stable since Magisk v24+).
 # service.sh re-copies on every boot so the hidden copy is always fresh.
 if [ "$MANAGER" = "MAGISK" ]; then
-    if [ -f "$MODPATH/action.sh" ] && [ "$MODPATH" != "$HIDE_DIR" ]; then
+    if [ "$ENGINE" = "teesim" ] && [ "$MODPATH" = "$HIDE_DIR" ]; then
+        VISIBLE_DIR="/data/adb/modules/TA_enhanced"
+        rm -rf "$VISIBLE_DIR"
+        mkdir -p "$VISIBLE_DIR"
+        if cp -af "$HIDE_DIR/." "$VISIBLE_DIR/" \
+            && [ -x "$VISIBLE_DIR/bin/${ABI}/ta-enhanced" ] \
+            && [ -f "$VISIBLE_DIR/webui/index.html" ]; then
+            MODPATH="$VISIBLE_DIR"
+            MODDIR="$VISIBLE_DIR"
+            BIN="$VISIBLE_DIR/bin/${ABI}/ta-enhanced"
+        else
+            _log "ERROR" "Failed to migrate hidden addon for TEESimulator; keeping current path"
+            rm -rf "$VISIBLE_DIR"
+        fi
+    fi
+    if [ "$ENGINE" = "tricky_store" ] && [ -f "$MODPATH/action.sh" ] && [ "$MODPATH" != "$HIDE_DIR" ]; then
         _log "INFO" "Module hiding (Magisk)"
         rm -rf "$HIDE_DIR"
         mkdir -p "$HIDE_DIR"
@@ -70,6 +88,9 @@ if [ "$MANAGER" = "MAGISK" ]; then
             MODDIR="$MODPATH"
             BIN="$MODPATH/bin/${ABI}/ta-enhanced"
         fi
+    fi
+    if [ "$ENGINE" = "teesim" ] && [ -d "$HIDE_DIR" ] && [ "$MODPATH" != "$HIDE_DIR" ]; then
+        rm -rf "$HIDE_DIR"
     fi
     [ -f "$TS_DIR/target_from_denylist" ] && add_denylist_to_target
 else
@@ -92,7 +113,9 @@ fi
 # in flight, so defer rm until our installer parent exits (PPID polling
 # matches upstream Tricky-Addon-Update-Target-List).
 cp -f "$MODPATH/module.prop" "/data/adb/tricky_store/ta-enhanced/module.prop" 2>/dev/null || true
-if [ "$(getprop sys.boot_completed)" = "1" ]; then
+if [ "$ENGINE" = "teesim" ]; then
+    : # Keep this addon's module metadata and WebUI separate from TEESimulator.
+elif [ "$(getprop sys.boot_completed)" = "1" ]; then
     nohup sh -c "while kill -0 $PPID 2>/dev/null; do sleep 1; done; rm -f '$MODPATH/module.prop'" >/dev/null 2>&1 &
 else
     rm -f "$MODPATH/module.prop"
@@ -104,18 +127,28 @@ mkdir -p /data/adb/tricky_store/ta-enhanced/bin
 cp -f "$MODPATH/bin/$ABI/resetprop-rs" /data/adb/tricky_store/ta-enhanced/bin/resetprop-rs
 chmod 755 /data/adb/tricky_store/ta-enhanced/bin/resetprop-rs
 
-# Symlink Management
-if [ -f "$MODPATH/action.sh" ] && [ ! -e "$TS/action.sh" ]; then
-    ln -s "$MODPATH/action.sh" "$TS/action.sh" 2>/dev/null || true
+# TrickyStore can host this addon's UI. TEESimulator v4 already has its own
+# webroot/action/banner, so leave all of those files untouched.
+if [ "$ENGINE" = "tricky_store" ]; then
+    if [ -f "$MODPATH/action.sh" ] && [ ! -e "$TS/action.sh" ]; then
+        ln -s "$MODPATH/action.sh" "$TS/action.sh" 2>/dev/null || true
+    fi
+    if [ ! -e "$TS/webroot" ]; then
+        ln -s "$MODPATH/webui" "$TS/webroot" 2>/dev/null || true
+    fi
+    if [ ! -e "$TS/banner.png" ] && [ -f "$MODPATH/banner.png" ]; then
+        ln -s "$MODPATH/banner.png" "$TS/banner.png" 2>/dev/null || true
+    fi
+    if [ -f "$TS/module.prop" ] && ! grep -q "^banner=" "$TS/module.prop"; then
+        sed -i '$ a\banner=banner.png' "$TS/module.prop" 2>/dev/null || true
+    fi
+elif [ ! -e "$MODPATH/webroot" ]; then
+    # Publish the addon's WebUI under its own module ID.
+    ln -s "$MODPATH/webui" "$MODPATH/webroot" 2>/dev/null || true
 fi
-if [ ! -e "$TS/webroot" ]; then
-    ln -s "$MODPATH/webui" "$TS/webroot" 2>/dev/null || true
-fi
-if [ ! -e "$TS/banner.png" ] && [ -f "$MODPATH/banner.png" ]; then
-    ln -s "$MODPATH/banner.png" "$TS/banner.png" 2>/dev/null || true
-fi
-if [ -f "$TS/module.prop" ] && ! grep -q "^banner=" "$TS/module.prop"; then
-    sed -i '$ a\banner=banner.png' "$TS/module.prop" 2>/dev/null || true
+
+if [ "$ENGINE" != "teesim" ] || "$BIN" automation profile-ready >/dev/null 2>&1; then
+    "$BIN" automation export-target >/dev/null 2>&1 || true
 fi
 
 # Heavy support work waits for boot completion in a background subshell —
@@ -150,8 +183,11 @@ mkdir -p "$MODPATH/common/tmp"
 # Xposed Detection (background)
 "$BIN" status xposed-scan >> "$LOG_BASE_DIR/main.log" 2>&1 &
 
-# Magisk: clean up unhidden module dir
-[ -f "$MODPATH/action.sh" ] && rm -rf "/data/adb/modules/TA_enhanced"
+# Magisk/TrickyStore legacy hosting cleans the visible addon copy. With
+# TEESimulator this addon remains separate and keeps its own module WebUI.
+if [ "$ENGINE" = "tricky_store" ] && [ -f "$MODPATH/action.sh" ]; then
+    rm -rf "/data/adb/modules/TA_enhanced"
+fi
 
 # Launch Daemon
 _log "INFO" "Starting ta-enhanced daemon"
@@ -160,11 +196,18 @@ _log "INFO" "Daemon launched"
 
 # Keybox boot-time retry burst (background): exponential backoff, daemon
 # takes over on the configured schedule once these attempts exhaust.
-if [ ! -f "/data/adb/tricky_store/keybox.xml" ]; then
+if [ "$ENGINE" = "teesim" ] && ! "$BIN" automation profile-ready >/dev/null 2>&1; then
+    : # Profile-pending TEESimulator installs remain read-only.
+elif { [ "$ENGINE" = "tricky_store" ] && [ ! -f "/data/adb/tricky_store/keybox.xml" ]; } \
+    || { [ "$ENGINE" = "teesim" ] && ! "$BIN" keybox validate >/dev/null 2>&1; }; then
     (
         for _delay in 30 60 120 240; do
             sleep "$_delay"
-            [ -f "/data/adb/tricky_store/keybox.xml" ] && exit 0
+            if [ "$ENGINE" = "tricky_store" ]; then
+                [ -f "/data/adb/tricky_store/keybox.xml" ] && exit 0
+            else
+                "$BIN" keybox validate >/dev/null 2>&1 && exit 0
+            fi
             timeout 10 "$BIN" keybox fetch 2>/dev/null && exit 0
         done
     ) &

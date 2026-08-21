@@ -1,11 +1,11 @@
-use std::path::Path;
-use std::process::Command;
-use serde::Serialize;
-use crate::config::Config;
+use super::ApplistAction;
 use crate::automation::target;
 use crate::automation::watcher;
+use crate::config::Config;
 use crate::platform::packages;
-use super::ApplistAction;
+use serde::Serialize;
+use std::path::Path;
+use std::process::Command;
 
 const TA_DIR: &str = "/data/adb/tricky_store/ta-enhanced";
 
@@ -63,7 +63,11 @@ fn build_applist(cfg: &Config) -> anyhow::Result<Vec<AppEntry>> {
 
         let bare = line.trim_end_matches('!').trim_end_matches('?');
         let is_excluded = exclude.iter().any(|p| {
-            if p.ends_with('*') { bare.starts_with(&p[..p.len() - 1]) } else { bare == p }
+            if p.ends_with('*') {
+                bare.starts_with(&p[..p.len() - 1])
+            } else {
+                bare == p
+            }
         });
         if is_excluded {
             continue;

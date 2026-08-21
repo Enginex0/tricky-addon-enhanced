@@ -1,5 +1,6 @@
 MODPATH=${0%/*}
 TS="/data/adb/modules/tricky_store"
+. "$MODPATH/common/detect_engine.sh"
 SCRIPT_DIR="/data/adb/tricky_store"
 AUTOMATION_DIR="$SCRIPT_DIR/.automation"
 TA_DIR="$SCRIPT_DIR/ta-enhanced"
@@ -69,17 +70,19 @@ fi
 # Remove module residue
 rm -rf "/data/adb/modules/.TA_enhanced"
 rm -f "/data/adb/boot_hash"
-rm -f "$SCRIPT_DIR/security_patch_auto_config"
-rm -f "$SCRIPT_DIR/target_from_denylist"
-rm -f "$SCRIPT_DIR/system_app"
-rm -f "$SCRIPT_DIR/enhanced.conf"
-rm -f "$SCRIPT_DIR/.verbose"
-rm -f "$SCRIPT_DIR/devconfig.toml"
+if [ "$ENGINE" = "tricky_store" ]; then
+    rm -f "$SCRIPT_DIR/security_patch_auto_config"
+    rm -f "$SCRIPT_DIR/target_from_denylist"
+    rm -f "$SCRIPT_DIR/system_app"
+    rm -f "$SCRIPT_DIR/enhanced.conf"
+    rm -f "$SCRIPT_DIR/.verbose"
+    rm -f "$SCRIPT_DIR/devconfig.toml"
+fi
 rm -rf "/data/adb/modules/TA_enhanced"
 
 # Restore TrickyStore description
 DESC_BAK="$TA_DIR/description.bak"
-if [ -f "$DESC_BAK" ] && [ -f "$TS/module.prop" ]; then
+if [ "$ENGINE" = "tricky_store" ] && [ -f "$DESC_BAK" ] && [ -f "$TS/module.prop" ]; then
     orig=$(cat "$DESC_BAK" 2>/dev/null)
     if [ -n "$orig" ]; then
         sed -i "s|^description=.*|description=${orig}|" "$TS/module.prop" 2>/dev/null
@@ -87,7 +90,7 @@ if [ -f "$DESC_BAK" ] && [ -f "$TS/module.prop" ]; then
     fi
 fi
 
-if [ -d "$TS" ]; then
+if [ "$ENGINE" = "tricky_store" ] && [ -d "$TS" ]; then
     [ -L "$TS/webroot" ] && rm -f "$TS/webroot"
     [ -L "$TS/action.sh" ] && rm -f "$TS/action.sh"
     [ -L "$TS/banner.png" ] && rm -f "$TS/banner.png"

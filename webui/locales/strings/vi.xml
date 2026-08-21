@@ -147,6 +147,9 @@
     <string name="automation_interval_set">Đặt</string>
     <string name="automation_manual_header">Thao tác thủ công</string>
     <string name="automation_fetch_key">Lấy khóa</string>
+    <string name="automation_teesim_profile_header">Cấu hình TEESimulator</string>
+    <string name="automation_teesim_profile_select">Cấu hình TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Đặt cấu hình</string>
     <string name="automation_patch_header">Tự động cập nhật bản vá bảo mật</string>
     <string name="automation_set_patch">Đặt bản vá</string>
     <string name="automation_region_header">Props vùng</string>
