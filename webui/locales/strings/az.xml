@@ -142,6 +142,9 @@
     <string name="automation_interval_set">Təyin et</string>
     <string name="automation_manual_header">Əl ilə əməliyyatlar</string>
     <string name="automation_fetch_key">Açar yüklə</string>
+    <string name="automation_teesim_profile_header">TEESimulator profili</string>
+    <string name="automation_teesim_profile_select">TEESimulator profili</string>
+    <string name="automation_teesim_profile_apply">Profili təyin et</string>
     <string name="automation_patch_header">Təhlükəsizlik yaması avtomatik yeniləmə</string>
     <string name="automation_set_patch">Yamanı təyin et</string>
     <string name="automation_region_header">Region Xüsusiyyətləri</string>

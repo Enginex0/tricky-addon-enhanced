@@ -147,6 +147,9 @@
     <string name="automation_interval_set">تعيين</string>
     <string name="automation_manual_header">إجراءات يدوية</string>
     <string name="automation_fetch_key">جلب المفتاح</string>
+    <string name="automation_teesim_profile_header">ملف تعريف TEESimulator</string>
+    <string name="automation_teesim_profile_select">ملف تعريف TEESimulator</string>
+    <string name="automation_teesim_profile_apply">تعيين ملف التعريف</string>
     <string name="automation_patch_header">تحديث تلقائي لتصحيح الأمان</string>
     <string name="automation_set_patch">تعيين التصحيح</string>
     <string name="automation_region_header">خصائص المنطقة</string>

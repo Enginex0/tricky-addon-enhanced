@@ -143,6 +143,9 @@
     <string name="automation_interval_set">設定</string>
     <string name="automation_manual_header">手動操作</string>
     <string name="automation_fetch_key">キー取得</string>
+    <string name="automation_teesim_profile_header">TEESimulator プロファイル</string>
+    <string name="automation_teesim_profile_select">TEESimulator プロファイル</string>
+    <string name="automation_teesim_profile_apply">プロファイルを設定</string>
     <string name="automation_patch_header">セキュリティパッチ自動更新</string>
     <string name="automation_set_patch">パッチ設定</string>
     <string name="automation_region_header">リージョンプロパティ</string>

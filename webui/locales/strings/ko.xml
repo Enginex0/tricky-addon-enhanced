@@ -142,6 +142,9 @@
     <string name="automation_interval_set">설정</string>
     <string name="automation_manual_header">수동 작업</string>
     <string name="automation_fetch_key">키 가져오기</string>
+    <string name="automation_teesim_profile_header">TEESimulator 프로필</string>
+    <string name="automation_teesim_profile_select">TEESimulator 프로필</string>
+    <string name="automation_teesim_profile_apply">프로필 설정</string>
     <string name="automation_patch_header">보안 패치 자동 업데이트</string>
     <string name="automation_set_patch">패치 설정</string>
     <string name="automation_region_header">리전 속성</string>

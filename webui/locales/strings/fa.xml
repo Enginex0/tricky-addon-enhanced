@@ -143,6 +143,9 @@
     <string name="automation_interval_set">تنظیم</string>
     <string name="automation_manual_header">عملیات دستی</string>
     <string name="automation_fetch_key">دریافت کلید</string>
+    <string name="automation_teesim_profile_header">نمایه TEESimulator</string>
+    <string name="automation_teesim_profile_select">نمایه TEESimulator</string>
+    <string name="automation_teesim_profile_apply">تنظیم نمایه</string>
     <string name="automation_patch_header">به‌روزرسانی خودکار وصله امنیتی</string>
     <string name="automation_set_patch">تنظیم وصله</string>
     <string name="automation_region_header">ویژگی‌های منطقه</string>

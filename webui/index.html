@@ -140,6 +140,7 @@
         <span hidden data-i18n="prompt_save_error" id="i18n-prompt-save-error"></span>
         <span hidden data-i18n="prompt_flag_failed" id="i18n-prompt-flag-failed"></span>
         <span hidden data-i18n="prompt_reboot_required" id="i18n-prompt-reboot-required"></span>
+        <span hidden data-i18n="automation_teesim_profile_select" id="i18n-teesim-profile-select"></span>
     </div>
 
     <!-- Applist Display -->
@@ -456,10 +457,12 @@
                 </div>
 
                 <div class="setting-section" id="teesim-profile-section" hidden>
-                    <div class="setting-header">TEESimulator profile</div>
+                    <div class="setting-header" data-i18n="automation_teesim_profile_header">TEESimulator profile</div>
                     <div class="setting-row">
-                        <select class="setting-select" id="teesim-profile-select" aria-label="TEESimulator profile"></select>
-                        <md-filled-button id="teesim-profile-apply">Set profile</md-filled-button>
+                        <select class="setting-select" id="teesim-profile-select" aria-label="TEESimulator profile" label="TEESimulator profile" data-i18n="automation_teesim_profile_select"></select>
+                        <md-filled-button id="teesim-profile-apply">
+                            <span data-i18n="automation_teesim_profile_apply">Set profile</span>
+                        </md-filled-button>
                     </div>
                     <div id="teesim-profile-hint" style="font-size:12px;opacity:0.7"></div>
                 </div>
@@ -711,6 +714,10 @@
             const apply = document.getElementById('teesim-profile-apply');
             const hint = document.getElementById('teesim-profile-hint');
             if (!section || !select || !apply || !hint) return;
+            const ariaLabel = (document.getElementById('i18n-teesim-profile-select')?.textContent.trim())
+                || select.getAttribute('label')
+                || 'TEESimulator profile';
+            select.setAttribute('aria-label', ariaLabel);
             const result = await ksuExec(addonBinaryCommand('automation profiles'));
             if (result.errno !== 0) {
                 section.hidden = false;

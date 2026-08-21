@@ -140,6 +140,9 @@
     <string name="automation_interval_set">Set</string>
     <string name="automation_manual_header">Manual Actions</string>
     <string name="automation_fetch_key">Fetch Key</string>
+    <string name="automation_teesim_profile_header">TEESimulator Profile</string>
+    <string name="automation_teesim_profile_select">TEESimulator Profile</string>
+    <string name="automation_teesim_profile_apply">Set Profile</string>
     <string name="automation_patch_header">Security Patch Auto-Update</string>
     <string name="automation_set_patch">Set Patch</string>
     <string name="automation_region_header">Region Props</string>

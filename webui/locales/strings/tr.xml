@@ -142,6 +142,9 @@
     <string name="automation_interval_set">Ayarla</string>
     <string name="automation_manual_header">Manuel İşlemler</string>
     <string name="automation_fetch_key">Anahtar Getir</string>
+    <string name="automation_teesim_profile_header">TEESimulator Profili</string>
+    <string name="automation_teesim_profile_select">TEESimulator Profili</string>
+    <string name="automation_teesim_profile_apply">Profili Ayarla</string>
     <string name="automation_patch_header">Güvenlik Yaması Otomatik Güncelleme</string>
     <string name="automation_set_patch">Yama Ayarla</string>
     <string name="automation_region_header">Bölge Özellikleri</string>

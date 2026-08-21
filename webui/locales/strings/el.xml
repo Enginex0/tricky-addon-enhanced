@@ -142,6 +142,9 @@
     <string name="automation_interval_set">Ορισμός</string>
     <string name="automation_manual_header">Χειροκίνητες ενέργειες</string>
     <string name="automation_fetch_key">Λήψη κλειδιού</string>
+    <string name="automation_teesim_profile_header">Προφίλ TEESimulator</string>
+    <string name="automation_teesim_profile_select">Προφίλ TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Ορισμός προφίλ</string>
     <string name="automation_patch_header">Αυτόματη ενημέρωση ενημέρωσης ασφαλείας</string>
     <string name="automation_set_patch">Ορισμός ενημέρωσης</string>
     <string name="automation_region_header">Region Props</string>

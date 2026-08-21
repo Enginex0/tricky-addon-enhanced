@@ -146,6 +146,9 @@
     <string name="automation_interval_set">ตั้งค่า</string>
     <string name="automation_manual_header">การดำเนินการด้วยตนเอง</string>
     <string name="automation_fetch_key">ดึงคีย์</string>
+    <string name="automation_teesim_profile_header">โปรไฟล์ TEESimulator</string>
+    <string name="automation_teesim_profile_select">โปรไฟล์ TEESimulator</string>
+    <string name="automation_teesim_profile_apply">ตั้งค่าโปรไฟล์</string>
     <string name="automation_patch_header">อัปเดตแพตช์ความปลอดภัยอัตโนมัติ</string>
     <string name="automation_set_patch">ตั้งค่าแพตช์</string>
     <string name="automation_region_header">Region Props</string>

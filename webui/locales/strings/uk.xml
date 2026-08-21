@@ -147,6 +147,9 @@
     <string name="automation_interval_set">Встановити</string>
     <string name="automation_manual_header">Ручні дії</string>
     <string name="automation_fetch_key">Завантажити ключ</string>
+    <string name="automation_teesim_profile_header">Профіль TEESimulator</string>
+    <string name="automation_teesim_profile_select">Профіль TEESimulator</string>
+    <string name="automation_teesim_profile_apply">Застосувати профіль</string>
     <string name="automation_patch_header">Автооновлення патча безпеки</string>
     <string name="automation_set_patch">Встановити патч</string>
     <string name="automation_region_header">Регіональні властивості</string>
