@@ -767,18 +767,18 @@ mod tests {
 
     #[test]
     fn ecdsa_p256_self_signed_link_verifies() {
-        use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256};
+        use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ECDSA_P256_SHA256};
 
         let mut params = CertificateParams::default();
-        params.alg = &PKCS_ECDSA_P256_SHA256;
         params.distinguished_name = DistinguishedName::new();
         params
             .distinguished_name
             .push(DnType::CommonName, "test-leaf");
-        let cert = Certificate::from_params(params).expect("rcgen build");
-        let der = cert.serialize_der().expect("rcgen serialize");
+        let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("rcgen key");
+        let cert = params.self_signed(&key).expect("rcgen build");
+        let der = cert.der();
 
-        let (_, parsed) = X509Certificate::from_der(&der).expect("x509 parse");
+        let (_, parsed) = X509Certificate::from_der(der.as_ref()).expect("x509 parse");
         verify_link(&parsed, &parsed).expect("self-signed P-256 link verifies");
     }
 
@@ -811,18 +811,18 @@ mod tests {
 
     #[test]
     fn lookup_revocation_finds_serial() {
-        use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256, SerialNumber};
+        use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ECDSA_P256_SHA256, SerialNumber};
 
         let mut params = CertificateParams::default();
-        params.alg = &PKCS_ECDSA_P256_SHA256;
         params.serial_number = Some(SerialNumber::from(0xdead_beefu64));
         params.distinguished_name = DistinguishedName::new();
         params
             .distinguished_name
             .push(DnType::CommonName, "rev-test");
-        let cert = Certificate::from_params(params).expect("rcgen build");
-        let der = cert.serialize_der().expect("rcgen serialize");
-        let (_, parsed) = X509Certificate::from_der(&der).expect("x509 parse");
+        let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("rcgen key");
+        let cert = params.self_signed(&key).expect("rcgen build");
+        let der = cert.der();
+        let (_, parsed) = X509Certificate::from_der(der.as_ref()).expect("x509 parse");
 
         let mut entries = serde_json::Map::new();
         entries.insert(
@@ -839,16 +839,16 @@ mod tests {
 
     #[test]
     fn lookup_revocation_returns_none_when_clean() {
-        use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256, SerialNumber};
+        use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ECDSA_P256_SHA256, SerialNumber};
 
         let mut params = CertificateParams::default();
-        params.alg = &PKCS_ECDSA_P256_SHA256;
         params.serial_number = Some(SerialNumber::from(0x1234u64));
         params.distinguished_name = DistinguishedName::new();
         params.distinguished_name.push(DnType::CommonName, "clean");
-        let cert = Certificate::from_params(params).expect("rcgen build");
-        let der = cert.serialize_der().expect("rcgen serialize");
-        let (_, parsed) = X509Certificate::from_der(&der).expect("x509 parse");
+        let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("rcgen key");
+        let cert = params.self_signed(&key).expect("rcgen build");
+        let der = cert.der();
+        let (_, parsed) = X509Certificate::from_der(der.as_ref()).expect("x509 parse");
 
         let mut entries = serde_json::Map::new();
         entries.insert(

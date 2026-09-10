@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "= 4.5.57", features = ["derive"] }
 serde = { version = "= 1.0.228", features = ["derive"] }
-serde_json = "= 1.0.149"
+serde_json = "= 1.0.151"
 toml = "= 0.8.23"
 tracing = { version = "= 0.1.44", features = ["log"] }
 tracing-subscriber = { version = "= 0.3.22", features = ["env-filter"] }
@@ -14,11 +14,11 @@ anyhow = "= 1.0.101"
 libc = "= 0.2.180"
 ureq = { version = "= 2.12.1", features = ["tls"] }
 quick-xml = { version = "= 0.37.2", features = ["serialize"] }
-base64 = "= 0.22.1"
-nix = { version = "= 0.29.0", features = ["signal", "process"] }
+base64 = "= 0.23.1"
+nix = { version = "= 0.31.1", features = ["signal", "process"] }
 ring = "0.17"
 x509-parser = "= 0.18.1"
-rcgen = { version = "0.12", default-features = false, features = ["pem", "ring"] }
+rcgen = { version = "0.14", default-features = false, features = ["pem", "ring"] }
 rsa = { version = "0.9", default-features = false, features = ["std", "pem"] }
 p256 = { version = "= 0.13.2", default-features = false, features = ["std", "pem", "pkcs8", "ecdsa"] }
 p384 = { version = "= 0.13.1", default-features = false, features = ["std", "pem", "pkcs8", "ecdsa"] }

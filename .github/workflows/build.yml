@@ -16,6 +16,9 @@ on:
       - 'rust/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,7 +41,7 @@ jobs:
             abi: x86
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -52,7 +55,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -109,7 +112,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bin-${{ matrix.abi }}-${{ matrix.profile }}
           path: rust/target/${{ matrix.target }}/${{ matrix.profile }}/ta-enhanced
@@ -119,12 +122,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -214,13 +217,13 @@ jobs:
           mv release/*-debug.zip release/dbg/ 2>/dev/null || true
           mv release/*.zip release/rel/ 2>/dev/null || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ta-enhanced-release-zip
           path: release/rel/*.zip
           retention-days: 30
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ta-enhanced-debug-zip
           path: release/dbg/*.zip
@@ -233,7 +236,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: ver
@@ -241,12 +244,12 @@ jobs:
           ver=$(grep '^version=' module.prop | cut -d= -f2)
           echo "version=${ver}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ta-enhanced-release-zip
           path: zips/release
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ta-enhanced-debug-zip
           path: zips/debug

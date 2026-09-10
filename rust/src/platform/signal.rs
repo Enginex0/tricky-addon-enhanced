@@ -5,7 +5,7 @@ pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 pub fn register_shutdown_handler() {
     unsafe {
         let mut sa: libc::sigaction = std::mem::zeroed();
-        sa.sa_sigaction = shutdown_handler as usize;
+        sa.sa_sigaction = shutdown_handler as *const () as usize;
         sa.sa_flags = libc::SA_RESTART;
         libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rcgen::{Certificate, CertificateParams, DistinguishedName, DnType, PKCS_ECDSA_P256_SHA256};
+use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, PKCS_ECDSA_P256_SHA256};
 use rsa::RsaPrivateKey;
 use rsa::pkcs8::EncodePrivateKey;
 
@@ -33,15 +33,16 @@ pub fn generate_and_install() -> Result<()> {
 
 fn generate() -> Result<String> {
     let mut params = CertificateParams::default();
-    params.alg = &PKCS_ECDSA_P256_SHA256;
     params.distinguished_name = DistinguishedName::new();
     params.distinguished_name.push(DnType::CommonName, "Android Keybox");
 
-    let cert = Certificate::from_params(params)
+    let ec_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
+        .context("EC key generation failed")?;
+    let cert = params
+        .self_signed(&ec_key)
         .context("EC cert generation failed")?;
-    let ec_pem = cert.serialize_private_key_pem();
-    let cert_pem = cert.serialize_pem()
-        .context("cert serialization failed")?;
+    let ec_pem = ec_key.serialize_pem();
+    let cert_pem = cert.pem();
 
     let mut rng = rand::rngs::OsRng;
     let rsa_key = RsaPrivateKey::new(&mut rng, 2048)
