@@ -152,6 +152,7 @@ REQUIRED_FILES=(
     prop.sh
     uninstall.sh
     install_func.sh
+    common/prop-handler.sh
     hotinstall.sh
     module.prop
     update.json
@@ -246,6 +247,7 @@ zip -r9 "$ZIP_PATH" . \
     -x "release/*" \
     -x "package.sh" \
     -x "rust/*" \
+    -x "tests/*" \
     -x "node_modules/*" \
     -x "webui/src/*" \
     -x "webui/node_modules/*" \

@@ -73,6 +73,7 @@ One binary. One process. One config file. No shell scripts in the hot path.
 - [x] **15 properties spoofed** — `vbmeta.digest`, `device_state`, `verifiedbootstate`, and 12 more
 - [x] **Captured at install time** — reads `ro.boot.vbmeta.digest` before any modules are active
 - [x] **Fallback chain** — persisted file → bootloader property → APK extraction (last resort)
+- [x] **Root-manager resetprop** — the boot property handler prefers the active manager's native resetprop, falls back to the bundled binary, and logs failed or ineffective writes to `ta-enhanced/logs/main.log`
 
 **Custom ROM Identity Hiding**
 - [x] **LineageOS prop scrub on boot:** strips the `lineage_` prefix from `ro.product.vendor.name`, replaces `org.lineageos.aperture` in `vendor.camera.aux.packagelist` and `persist.vendor.camera.privapp.list`, stops `vendor.lineage_health` and deletes its `init.svc.*` status prop
