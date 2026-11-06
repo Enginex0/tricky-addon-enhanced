@@ -7,6 +7,7 @@ on:
       - 'rust/**'
       - 'webui/**'
       - 'common/**'
+      - 'tests/**'
       - '*.sh'
       - 'module.prop'
       - '.github/workflows/build.yml'
@@ -14,9 +15,27 @@ on:
     branches: [main]
     paths:
       - 'rust/**'
+      - 'webui/**'
+      - 'common/**'
+      - 'tests/**'
+      - '*.sh'
+      - 'module.prop'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
+  shell-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test property handler
+        run: |
+          sh -n prop.sh service.sh common/prop-handler.sh
+          sh -n tests/prop-handler.sh tests/service-prop-handler.sh tests/package-contents.sh
+          bash -n package.sh
+          sh tests/prop-handler.sh
+          sh tests/service-prop-handler.sh
+
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -116,7 +135,7 @@ jobs:
           retention-days: 7
 
   package:
-    needs: build
+    needs: [build, shell-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -171,6 +190,9 @@ jobs:
             -x ".gitignore" \
             -x ".gitmodules" \
             -x ".github/*" \
+            -x ".omc/*" \
+            -x ".context/*" \
+            -x "handoff/*" \
             -x "external/*" \
             -x "artifacts/*" \
             -x "CLAUDE.md" \
@@ -182,6 +204,7 @@ jobs:
             -x "release/*" \
             -x "package.sh" \
             -x "rust/*" \
+            -x "tests/*" \
             -x "node_modules/*" \
             -x "webui/src/*" \
             -x "webui/node_modules/*" \
@@ -207,6 +230,9 @@ jobs:
             -x "webui/assets/index-CExZ91Qz.js.bak" \
             -x "webui/material-symbols-outlined.woff2" \
             -x "*.md"
+
+      - name: Verify module ZIPs
+        run: sh tests/package-contents.sh release/*.zip
 
       - name: Separate ZIPs
         run: |

@@ -5,6 +5,7 @@ HIDE_DIR="/data/adb/modules/.TA_enhanced"
 TSPA="/data/adb/modules/tsupport-advance"
 
 . "$MODPATH/common/common.sh"
+. "$MODPATH/common/prop-handler.sh"
 detect_manager
 
 _log "INFO" "Service started (manager=$MANAGER)"
@@ -40,12 +41,6 @@ add_denylist_to_target() {
 # Security patch is handled by the daemon's SecurityPatchTask (with retries + bulletin fetch).
 # Running `set` here would overwrite bulletin-fetched dates with stale device props.
 
-# prop.sh runs with RP_BIN pointed at the bundled resetprop-rs to keep the
-# upstream calling pattern intact while sourcing the property setter from
-# the module bundle.
-RP_BIN="$MODPATH/bin/$ABI/resetprop-rs" sh "$MODPATH/prop.sh" &
-
-
 # TSupport-A Interop
 if [ -d "$TSPA" ]; then
     touch "/storage/emulated/0/stop-tspa-auto-target" 2>/dev/null || true
@@ -75,6 +70,18 @@ if [ "$MANAGER" = "MAGISK" ]; then
 else
     _log "INFO" "Denylist merge skipped: $MANAGER has no flat denylist API"
     [ -d "$HIDE_DIR" ] && rm -rf "$HIDE_DIR"
+fi
+
+if PROP_RP_BIN=$(select_prop_resetprop "$MANAGER" "$MODPATH/bin/$ABI/resetprop-rs"); then
+    _log "INFO" "Property handler using $PROP_RP_BIN"
+    (
+        RP_BIN="$PROP_RP_BIN" sh "$MODPATH/prop.sh" ||
+            printf '%s\n' "Property handler exited with an error"
+    ) 2>&1 | while IFS= read -r line; do
+        _log "WARN" "$line"
+    done &
+else
+    _log "ERROR" "Property handler could not find a usable resetprop"
 fi
 
 # Ensure system_app file exists for WebUI system app display
@@ -150,8 +157,9 @@ mkdir -p "$MODPATH/common/tmp"
 # Xposed Detection (background)
 "$BIN" status xposed-scan >> "$LOG_BASE_DIR/main.log" 2>&1 &
 
-# Magisk: clean up unhidden module dir
-[ -f "$MODPATH/action.sh" ] && rm -rf "/data/adb/modules/TA_enhanced"
+# Magisk: clean up the unhidden copy only after switching to the hidden copy.
+[ "$MANAGER" = "MAGISK" ] && [ "$MODPATH" = "$HIDE_DIR" ] && [ -f "$MODPATH/action.sh" ] &&
+    rm -rf "/data/adb/modules/TA_enhanced"
 
 # Launch Daemon
 _log "INFO" "Starting ta-enhanced daemon"

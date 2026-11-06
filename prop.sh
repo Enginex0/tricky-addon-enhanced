@@ -1,29 +1,34 @@
 #!/bin/sh
 
 RP="${RP_BIN:-resetprop}"
-
-check_reset_prop() {
-    local NAME=$1
-    local EXPECTED=$2
-    local VALUE=$($RP $NAME)
-    [ -z $VALUE ] || [ $VALUE = $EXPECTED ] || $RP -n $NAME $EXPECTED
-}
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$SCRIPT_DIR/common/prop-handler.sh"
 
 contains_reset_prop() {
     local NAME=$1
     local CONTAINS=$2
     local NEWVAL=$3
-    [[ "$($RP $NAME)" = *"$CONTAINS"* ]] && $RP -n $NAME $NEWVAL
+    local VALUE
+    if ! VALUE=$("$RP" "$NAME"); then
+        printf 'Failed to read property %s\n' "$NAME" >&2
+        return 1
+    fi
+    case "$VALUE" in
+        *"$CONTAINS"*) set_reset_prop "$NAME" "$NEWVAL" ;;
+    esac
 }
 
 empty_reset_prop() {
     local NAME=$1
     local NEWVAL=$2
-    local VALUE=$(getprop "$NAME")
-    [ -z "$VALUE" ] && $RP -n $NAME $NEWVAL
+    local VALUE
+    if ! VALUE=$(getprop "$NAME"); then
+        printf 'Failed to read property %s\n' "$NAME" >&2
+        return 1
+    fi
+    [ -n "$VALUE" ] && return 0
+    set_reset_prop "$NAME" "$NEWVAL"
 }
-
-$RP -w sys.boot_completed 0
 
 if [ -f "/data/adb/disable_prop_handler" ]; then
     exit 0
@@ -31,7 +36,11 @@ fi
 
 if [ ! -f "/data/adb/disable_vbmeta_digest_spoof" ] && [ -f "/data/adb/boot_hash" ]; then
     hash_value=$(grep -v '^#' "/data/adb/boot_hash" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-    [ -z "$hash_value" ] && rm -f /data/adb/boot_hash || $RP -n ro.boot.vbmeta.digest "$hash_value"
+    if [ -z "$hash_value" ]; then
+        rm -f /data/adb/boot_hash || printf '%s\n' 'Failed to remove empty boot hash' >&2
+    else
+        set_reset_prop ro.boot.vbmeta.digest "$hash_value"
+    fi
 fi
 
 check_reset_prop "ro.boot.vbmeta.device_state" "locked"
@@ -65,24 +74,24 @@ contains_reset_prop "ro.boot.bootmode" "recovery" "unknown"
 contains_reset_prop "vendor.boot.bootmode" "recovery" "unknown"
 
 # Custom ROM (LineageOS) identity scrub: only fires when LOS-only signatures are present
-v=$($RP ro.product.vendor.name)
+v=$("$RP" ro.product.vendor.name)
 case "$v" in
-    lineage_*) $RP -n ro.product.vendor.name "${v#lineage_}" ;;
+    lineage_*) set_reset_prop ro.product.vendor.name "${v#lineage_}" ;;
 esac
 
-v=$($RP vendor.camera.aux.packagelist)
+v=$("$RP" vendor.camera.aux.packagelist)
 case "$v" in
-    *org.lineageos*) $RP -n vendor.camera.aux.packagelist "com.android.camera" ;;
+    *org.lineageos*) set_reset_prop vendor.camera.aux.packagelist "com.android.camera" ;;
 esac
 
-v=$($RP persist.vendor.camera.privapp.list)
+v=$("$RP" persist.vendor.camera.privapp.list)
 case "$v" in
-    *org.lineageos*) $RP -n persist.vendor.camera.privapp.list "com.android.camera" ;;
+    *org.lineageos*) set_reset_prop persist.vendor.camera.privapp.list "com.android.camera" ;;
 esac
 
-[ -n "$($RP init.svc.vendor.lineage_health)" ] && {
-    setprop ctl.stop vendor.lineage_health
-    $RP -d init.svc.vendor.lineage_health
+[ -n "$("$RP" init.svc.vendor.lineage_health)" ] && {
+    setprop ctl.stop vendor.lineage_health || printf '%s\n' 'Failed to stop vendor.lineage_health' >&2
+    "$RP" -d init.svc.vendor.lineage_health || printf '%s\n' 'Failed to delete init.svc.vendor.lineage_health' >&2
 }
 
 # Reset vbmeta related prop
@@ -92,4 +101,4 @@ empty_reset_prop "ro.boot.vbmeta.avb_version" "1.0"
 empty_reset_prop "ro.boot.vbmeta.hash_alg" "sha256"
 empty_reset_prop "ro.boot.vbmeta.size" "4096"
 
-$RP -c || true
+exit 0
