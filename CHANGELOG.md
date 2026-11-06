@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Prefer the active root manager's native resetprop for the boot property handler, with the bundled ABI-specific binary as a fallback. Verify property writes and log failures. This adapts the vivo fork's resetprop fix without waiting until boot completion and avoids losing the handler if Magisk removes the original module copy.
+- Run property-handler tests and Android builds for shell, WebUI and other module changes in pull requests; exclude test and session files from packaged ZIPs.
+
 ## v5.53.1 (2026-05-01)
 
 ### Bug Fixes
